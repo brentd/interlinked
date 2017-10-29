@@ -12,16 +12,17 @@ const mux = key => x => [key, x]
 
 let subscriptionId = 0
 
-const remoteToLocal = (input, output, registers) => remote => {
+const remoteToLocal = (input, mainOut, registers, completes) => remote => {
   return Object.entries(remote).reduce((local, [k, v]) => {
     if (v.type === 'observable') {
       const proxy = rx.Observable.create(observer => {
         const id = subscriptionId++
-        const sub = demux(input, id).subscribe(observer)
-        output.next(['@', {subscribe: k, id}])
+        const complete = completes.filter(x => x === id)
+        const sub = demux(input, id).takeUntil(complete).subscribe(observer)
+        mainOut.next({subscribe: k, id})
         return () => {
           sub.unsubscribe()
-          output.next(['@', {unsubscribe: id}])
+          mainOut.next({unsubscribe: id})
         }
       })
       local[k] = proxy.takeUntil(registers)
@@ -48,33 +49,46 @@ const localToRemote = local => {
 }
 
 export default function(input, output, api) {
-  const main = demux(input, '@').share()
+  const main = {
+    in: demux(input, '@').share(),
+    out: new rx.Subject()
+  }
+  main.out.map(mux('@')).subscribe(output)
 
-  output.next(['@', {register: localToRemote(api)}])
+  if (api && Object.keys(api).length > 0)
+    main.out.next({register: localToRemote(api)})
 
-  const registers = main
+  const registers = main.in
     .filter(x => x.register)
     .pluck('register')
 
-  const unsubscribes = main
+  const subscribes = main.in
+    .filter(x => x.subscribe)
+    .map(({subscribe, id}) => [subscribe, id])
+
+  const unsubscribes = main.in
     .filter(x => x.unsubscribe != undefined)
     .pluck('unsubscribe')
 
-  const subscribes = main
-    .filter(x => x.subscribe)
-    .map(({subscribe, id}) => [subscribe, id])
+  const completes = main.in
+    .filter(x => x.complete)
+    .pluck('complete')
 
   // const methods = main
   //   .filter(x => x.method)
   //   .map(({method, id}))
 
   subscribes
-    .mergeMap(([name, id]) =>
+    .map(([name, id]) =>
       api[name]
-        .takeUntil(unsubscribes.filter(x => x == id))
-        .map(mux(id))
+        .takeUntil(unsubscribes.filter(x => x === id))
+        .subscribe(
+          x   => output.next(mux(id)(x)),
+          err => main.out.next({error: id}),
+          ()  => main.out.next({complete: id})
+        )
     )
-    .subscribe(output)
+    .subscribe()
 
-  return registers.map(remoteToLocal(input, output, registers))
+  return registers.map(remoteToLocal(input, main.out, registers, completes))
 }
