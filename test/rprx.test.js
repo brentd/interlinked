@@ -49,4 +49,42 @@ describe('rprx', () => {
       })
     })
   })
+
+  it('can call a remote function and wait for a response as a promise', done => {
+    const [a, b] = connectedPeers({fn: () => 'cells'}, {})
+
+    b.subscribe(remote => {
+      remote.fn().then(x => {
+        assert.equal(x, 'cells')
+        done()
+      })
+    })
+  })
+
+  it('when the remote function returns a promise', done => {
+    const fn = () => new Promise(resolve => setTimeout(() => resolve('cells'), 1))
+    const [a, b] = connectedPeers({fn}, {})
+
+    b.subscribe(remote => {
+      remote.fn().then(x => {
+        assert.equal(x, 'cells')
+        done()
+      })
+    })
+  })
+
+  it('when the remote function returns an observable', done => {
+    const fn = () => new rx.Observable.from([1,2,3])
+    const [a, b] = connectedPeers({fn}, {})
+
+    b.subscribe(remote => {
+      remote.fn().then(x => {
+        x.toArray().toPromise().then(x => {
+          assert.deepEqual(x, [1,2,3])
+          done()
+        })
+      })
+    })
+  })
+
 })
