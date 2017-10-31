@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
-  "scripts": {
-    "test": "mocha -w --compilers js:babel-core/register"
-  },
   "peerDependencies": {
     "rxjs": "^5.0.0"
   },
@@ -16,6 +13,7 @@
     "babel-preset-stage-0": "^6.24.1",
     "express": "^4.15.4",
     "mocha": "^4.0.1",
+    "mocha-clean": "^1.0.0",
     "rxjs": "^5.0.0",
     "webpack": "^3.8.1",
     "webpack-dev-middleware": "^1.12.0",

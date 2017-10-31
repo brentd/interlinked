@@ -2,6 +2,9 @@ import rx from 'rxjs'
 import rprx from '../index.js'
 import assert from 'assert'
 
+rx.Observable.prototype.log = function(msg) {
+  return this.do(x => console.log(msg, x))
+}
 
 function simulatedSockets() {
   const make = (n) => {
