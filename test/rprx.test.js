@@ -23,70 +23,68 @@ function simulatedSockets() {
   return [a, b]
 }
 
+const connectedPeers = async (apia = {}, apib = {}) => {
+  const [a, b] = simulatedSockets()
+  return await Promise.all([
+    rprx(a.in, a.out, apia).first().toPromise(),
+    rprx(b.in, b.out, apib).first().toPromise()
+  ])
+}
+
 describe('rprx', () => {
-  const connectedPeers = (apia = {}, apib = {}) => {
-    const [a, b] = simulatedSockets()
-    return [rprx(a.in, a.out, apia), rprx(b.in, b.out, apib)]
-  }
-
-  it('can subscribe to a remote observable', done => {
+  it('can subscribe to a remote observable', async () => {
     const numbers = rx.Observable.from([1,2,3])
-    const [a, b] = connectedPeers({numbers}, {})
+    const [a, b] = await connectedPeers({numbers}, {})
 
-    b.subscribe(remote => {
-      remote.numbers.take(2).toArray().toPromise().then(x => {
-        assert.deepEqual(x, [1,2])
-        done()
-      })
+    return b.numbers.take(2).toArray().toPromise().then(x => {
+      assert.deepEqual(x, [1,2])
     })
   })
 
-  it('knows when a remote observable completes', done => {
+  it('knows when a remote observable completes', async () => {
     const numbers = rx.Observable.from([1,2,3])
-    const [a, b] = connectedPeers({numbers}, {})
+    const [a, b] = await connectedPeers({numbers}, {})
 
-    b.subscribe(remote => {
-      remote.numbers.toArray().toPromise().then(x => {
-        assert.deepEqual(x, [1,2,3])
-        done()
-      })
+    return b.numbers.toArray().toPromise().then(x => {
+      assert.deepEqual(x, [1,2,3])
     })
   })
 
-  it('can call a remote function and wait for a response as a promise', done => {
-    const [a, b] = connectedPeers({fn: () => 'cells'}, {})
+  it('can call a remote function and wait for a response as a promise', async () => {
+    const fn = () => 'cells'
+    const [a, b] = await connectedPeers({fn}, {})
 
-    b.subscribe(remote => {
-      remote.fn().then(x => {
-        assert.equal(x, 'cells')
-        done()
-      })
+    return b.fn().then(x => {
+      assert.equal(x, 'cells')
     })
   })
 
-  it('when the remote function returns a promise', done => {
+  it('when the remote function returns a promise', async () => {
     const fn = () => new Promise(resolve => setTimeout(() => resolve('cells'), 1))
-    const [a, b] = connectedPeers({fn}, {})
+    const [a, b] = await connectedPeers({fn}, {})
 
-    b.subscribe(remote => {
-      remote.fn().then(x => {
-        assert.equal(x, 'cells')
-        done()
-      })
+    return b.fn().then(x => {
+      assert.equal(x, 'cells')
     })
   })
 
-  it('when the remote function returns an observable', done => {
-    const fn = () => new rx.Observable.from([1,2,3])
-    const [a, b] = connectedPeers({fn}, {})
+  it('can register a nested interface', async () => {
+    const fn = () => 'interlinked'
+    const [a, b] = await connectedPeers({cells: {within: {cells: fn}}}, {})
 
-    b.subscribe(remote => {
-      remote.fn().then(x => {
-        x.toArray().toPromise().then(x => {
-          assert.deepEqual(x, [1,2,3])
-          done()
-        })
-      })
+    return b.cells.within.cells().then(x => {
+      assert.equal(x, 'interlinked')
+    })
+  })
+
+  it('when the remote function returns an observable', async () => {
+    const fn = () => new rx.Observable.from([1,2,3])
+    const [a, b] = await connectedPeers({fn}, {})
+
+    const obs = await b.fn()
+
+    return obs.toArray().toPromise().then(x => {
+      assert.deepEqual(x, [1,2,3])
     })
   })
 
