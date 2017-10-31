@@ -3,7 +3,8 @@ import rx from 'rxjs'
 let reqId = 0
 const nextRequestId = () => reqId++
 
-const defined = prop => x => x[prop] !== undefined
+const defined    = prop => x => x[prop] !== undefined
+const getKeyPath = (obj, keyPath) => keyPath.split('.').reduce((acc, k) => acc[k], obj)
 
 // Returns a function that notifies the remote to execute the function
 // identified by `key`. Returns a Promise that will resolve when the
@@ -36,17 +37,19 @@ const createProxyObservable = (channel, key) =>
 
 // Sets up proxy functions and observables as defined by the serialized remote
 // interface.
-const registerRemote = (channel, definition) => {
+const registerRemote = (channel, definition, keys = []) => {
   return Object.entries(definition).reduce((local, [k, v]) => {
+    keys.push(k)
+    const keyPath = keys.join('.')
     switch (v.type) {
       case 'function':
-        local[k] = createProxyFunction(channel, k)
+        local[k] = createProxyFunction(channel, keyPath)
         break
       case 'observable':
-        local[k] = createProxyObservable(channel, k)
+        local[k] = createProxyObservable(channel, keyPath)
         break
       default:
-        local[k] = registerRemote(channel, v)
+        local[k] = registerRemote(channel, v, keys)
     }
     return local
   }, {})
@@ -92,13 +95,11 @@ class Channel {
   }
 }
 
-export default function(input, output, api) {
+export default function(input, output, api = {}) {
   const channel = new Channel(input, x => output.next(x))
-
-  if (api && Object.keys(api).length > 0)
-    channel.main.send({register: serializeRemote(api)})
-
   const anonObservables = new Map()
+
+  channel.main.send({register: serializeRemote(api)})
 
   const subscribeLocal = (id, obs) =>
     obs.takeUntil(channel.unsubscribes.filter(x => x === id))
@@ -112,7 +113,7 @@ export default function(input, output, api) {
     channel.subscribes.partition(({subscribe: key}) => typeof key === 'string')
 
   namedSubscribes
-    .map(({subscribe: key, id}) => subscribeLocal(id, api[key]))
+    .map(({subscribe: key, id}) => subscribeLocal(id, getKeyPath(api, key)))
     .subscribe()
 
   anonSubscribes
@@ -121,7 +122,7 @@ export default function(input, output, api) {
 
   channel.methods
     .map(({method, params, id}) => {
-      const result = api[method](...params)
+      const result = getKeyPath(api, method)(...params)
       Promise.resolve(result).then(x => {
         if (x.subscribe) {
           anonObservables.set(id, x)
