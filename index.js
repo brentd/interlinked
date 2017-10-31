@@ -1,68 +1,68 @@
 import rx from 'rxjs'
 
-rx.Observable.prototype.log = function(msg) {
-  return this.do(x => console.log(msg, x))
-}
+let reqId = 0
+const nextRequestId = () => reqId++
 
-let cid = 0
-const nextClientId = () => cid++
+const defined = prop => x => x[prop] !== undefined
 
-const remoteToLocal = channel => remote => {
-  return Object.entries(remote).reduce((local, [k, v]) => {
-    if (v.type === 'observable') {
-      const proxy = rx.Observable.create(observer => {
-        const id = nextClientId()
-        const complete = channel.completes.filter(x => x === id)
-        const sub = channel.demux(id).takeUntil(complete).subscribe(observer)
-        channel.main.send({subscribe: id, key: k})
-        return () => {
-          sub.unsubscribe()
-          channel.main.send({unsubscribe: id})
-        }
-      })
-      local[k] = proxy.takeUntil(channel.registers)
-    } else if (v.type === 'function') {
-      local[k] = (...params) => {
-        const id = nextClientId()
-        channel.main.send({method: k, params, id})
-        return channel.results
-          .filter(x => x.id === id)
-          .map(x => {
-            if (x.observable) {
-              const proxy = rx.Observable.create(observer => {
-                const complete = channel.completes.filter(x => x === id)
-                const sub = channel.demux(id).takeUntil(complete).subscribe(observer)
-                channel.main.send({subscribe: id})
-                return () => {
-                  sub.unsubscribe()
-                  channel.main.send({unsubscribe: id})
-                }
-              })
-              return proxy.takeUntil(channel.registers)
-            } else {
-              return x.result
-            }
-          })
-          .take(1)
-          .toPromise()
-      }
-    } else {
-      local[k] = remoteToLocal(channel)(v)
+// Returns a function that notifies the remote to execute the function
+// identified by `key`. Returns a Promise that will resolve when the
+// remote responds with a return value.
+const createProxyFunction = (channel, key) =>
+  (...params) => {
+    const id = nextRequestId()
+    channel.main.send({method: key, params, id})
+    return channel.results
+      .filter(x => x.id === id)
+      .take(1)
+      .map(x => x.observable ? createProxyObservable(channel, id) : x.result)
+      .toPromise()
+  }
+
+// Returns an observable that, when subscribed to, notifies the remote
+// to subscribe to the observable identified by `key`. The subscription
+// forwards all events received from the remote to the observer.
+const createProxyObservable = (channel, key) =>
+  rx.Observable.create(observer => {
+    const id = nextRequestId()
+    channel.main.send({subscribe: key, id})
+    const stop = channel.completes.filter(x => x === id).merge(channel.registers)
+    const sub = channel.demux(id).takeUntil(stop).subscribe(observer)
+    return () => {
+      sub.unsubscribe()
+      channel.main.send({unsubscribe: id})
+    }
+  })
+
+// Sets up proxy functions and observables as defined by the serialized remote
+// interface.
+const registerRemote = (channel, definition) => {
+  return Object.entries(definition).reduce((local, [k, v]) => {
+    switch (v.type) {
+      case 'function':
+        local[k] = createProxyFunction(channel, k)
+        break
+      case 'observable':
+        local[k] = createProxyObservable(channel, k)
+        break
+      default:
+        local[k] = registerRemote(channel, v)
     }
     return local
   }, {})
 }
 
-const localToRemote = local => {
-  return Object.entries(local).reduce((remote, [k, v]) => {
+// Serializes an interface into a definition that can be sent over the wire.
+const serializeRemote = api => {
+  return Object.entries(api).reduce((definition, [k, v]) => {
     if (v.subscribe) {
-      remote[k] = {key: k, type: 'observable'}
+      definition[k] = {key: k, type: 'observable'}
     } else if (typeof v === 'function') {
-      remote[k] = {key: k, type: 'function'}
+      definition[k] = {key: k, type: 'function'}
     } else if (typeof v === 'object' && v !== null) {
-      remote[k] = transform(v)
+      definition[k] = serializeRemote(v)
     }
-    return remote
+    return definition
   }, {})
 }
 
@@ -71,36 +71,20 @@ const localToRemote = local => {
 class Channel {
   constructor(input, sender) {
     this.input = input
-    this.send  = (id, x) => sender([id, x])
+    this.send = (id, x) => sender([id, x])
 
     this.main = {
       in: this.demux('@').share(),
       send: x => this.send('@', x)
     }
 
-    this.registers = this.main.in
-      .filter(x => x.register != undefined)
-      .pluck('register')
-
-    this.subscribes = this.main.in
-      .filter(x => x.subscribe != undefined)
-
-    this.unsubscribes = this.main.in
-      .filter(x => x.unsubscribe != undefined)
-      .map(({unsubscribe: id}) => id)
-
-    this.completes = this.main.in
-      .filter(x => x.complete != undefined)
-      .pluck('complete')
-
-    this.methods = this.main.in
-      .filter(x => x.method != undefined)
-
-    this.results = this.main.in
-      .filter(x => x.result != undefined)
-
-    this.errors = this.main.in
-      .filter(x => x.error != undefined)
+    this.registers    = this.main.in.filter(defined('register')).pluck('register')
+    this.subscribes   = this.main.in.filter(defined('subscribe'))
+    this.unsubscribes = this.main.in.filter(defined('unsubscribe')).pluck('unsubscribe')
+    this.completes    = this.main.in.filter(defined('complete')).pluck('complete')
+    this.methods      = this.main.in.filter(defined('method'))
+    this.results      = this.main.in.filter(defined('result'))
+    this.errors       = this.main.in.filter(defined('error'))
   }
 
   demux(id) {
@@ -110,48 +94,43 @@ class Channel {
 
 export default function(input, output, api) {
   const channel = new Channel(input, x => output.next(x))
-  const observables = new Map()
 
   if (api && Object.keys(api).length > 0)
-    channel.main.send({register: localToRemote(api)})
+    channel.main.send({register: serializeRemote(api)})
 
-  channel.subscribes
-    .filter(x => x.key !== undefined)
-    .map(({subscribe: id, key}) =>
-      api[key]
-        .takeUntil(channel.unsubscribes.filter(x => x === id))
-        .subscribe(
-          x   => channel.send(id, x),
-          err => channel.main.send({error: id}),
-          ()  => channel.main.send({complete: id})
-        )
-    ).subscribe()
+  const anonObservables = new Map()
 
-  channel.subscribes
-    .filter(x => x.key === undefined)
-    .map(({subscribe: id}) =>
-      observables.get(id)
-        .takeUntil(channel.unsubscribes.filter(x => x === id))
-        .subscribe(
-          x   => channel.send(id, x),
-          err => channel.main.send({error: id}),
-          ()  => channel.main.send({complete: id})
-        )
-    ).subscribe()
+  const subscribeLocal = (id, obs) =>
+    obs.takeUntil(channel.unsubscribes.filter(x => x === id))
+      .subscribe(
+        x   => channel.send(id, x),
+        err => channel.main.send({error: id}),
+        ()  => channel.main.send({complete: id})
+      )
+
+  const [namedSubscribes, anonSubscribes] =
+    channel.subscribes.partition(({subscribe: key}) => typeof key === 'string')
+
+  namedSubscribes
+    .map(({subscribe: key, id}) => subscribeLocal(id, api[key]))
+    .subscribe()
+
+  anonSubscribes
+    .map(({subscribe: key, id}) => subscribeLocal(id, anonObservables.get(key)))
+    .subscribe()
 
   channel.methods
     .map(({method, params, id}) => {
       const result = api[method](...params)
       Promise.resolve(result).then(x => {
         if (x.subscribe) {
-          observables.set(id, x)
-          channel.main.send({id, result: true, observable: true})
-          console.log(observables)
+          anonObservables.set(id, x)
+          channel.main.send({id, result: null, observable: true})
         } else {
           channel.main.send({id, result: x})
         }
       })
     }).subscribe()
 
-  return channel.registers.map(remoteToLocal(channel))
+  return channel.registers.map(remote => registerRemote(channel, remote))
 }
