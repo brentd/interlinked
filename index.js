@@ -13,7 +13,7 @@ const createProxyFunction = (channel, key) =>
   (...params) => {
     const id = nextRequestId()
     channel.main.send({method: key, params, id})
-    return channel.results
+    return channel.result$
       .filter(x => x.id === id)
       .take(1)
       .map(x => x.observable ? createProxyObservable(channel, id) : x.result)
@@ -26,7 +26,7 @@ const createProxyFunction = (channel, key) =>
 const createProxyObservable = (channel, key) =>
   rx.Observable.create(observer => {
     const id = nextRequestId()
-    const stop = channel.completes.filter(x => x === id).merge(channel.registers)
+    const stop = channel.complete$.filter(x => x === id).merge(channel.register$)
     const sub = channel.demux(id).takeUntil(stop).subscribe(observer)
     channel.main.send({subscribe: key, id})
     return () => {
@@ -92,26 +92,7 @@ export default function(input, output, api = {}) {
   const channel = new Channel(input, x => output.next(x))
   const anonObservables = new Map()
 
-  const subscribeLocal = (id, obs) =>
-    obs.takeUntil(channel.unsubscribes.filter(x => x === id))
-      .subscribe(
-        x   => channel.send(id, x),
-        err => channel.main.send({error: id}),
-        ()  => channel.main.send({complete: id})
-      )
-
-  const [namedSubscribes, anonSubscribes] =
-    channel.subscribes.partition(({subscribe: key}) => typeof key === 'string')
-
-  namedSubscribes
-    .map(({subscribe: key, id}) => subscribeLocal(id, getKeyPath(api, key)))
-    .subscribe()
-
-  anonSubscribes
-    .map(({subscribe: key, id}) => subscribeLocal(id, anonObservables.get(key)))
-    .subscribe()
-
-  channel.methods
+  channel.method$
     .map(({method, params, id}) => {
       const result = getKeyPath(api, method)(...params)
       Promise.resolve(result).then(x => {
@@ -124,10 +105,28 @@ export default function(input, output, api = {}) {
       })
     }).subscribe()
 
+  const subscribeLocal = (id, obs) =>
+    obs.takeUntil(channel.unsubscribe$.filter(x => x === id))
+      .subscribe(
+        x   => channel.mux(id, x),
+        err => channel.main.send({error: id}),
+        ()  => channel.main.send({complete: id})
+      )
+
+  const [namedSubscribe$, anonSubscribe$] = channel.subscribe$
+    .partition(({subscribe: key}) => typeof key === 'string')
+
+  namedSubscribe$
+    .map(({subscribe: keyPath, id}) => subscribeLocal(id, getKeyPath(api, keyPath)))
+    .subscribe()
+  anonSubscribe$
+    .map(({subscribe: obsId, id}) => subscribeLocal(id, anonObservables.get(obsId)))
+    .subscribe()
 
   setTimeout(() =>
     channel.main.send({register: serializeRemote(api)})
   , 0)
 
-  return channel.registers.map(remote => registerRemote(channel, remote))
+  return channel.register$
+    .map(({register: definition}) => registerRemote(channel, definition))
 }
