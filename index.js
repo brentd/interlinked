@@ -39,8 +39,7 @@ const createProxyObservable = (channel, key) =>
 // interface.
 const registerRemote = (channel, definition, keys = []) => {
   return Object.entries(definition).reduce((local, [k, v]) => {
-    keys.push(k)
-    const keyPath = keys.join('.')
+    const keyPath = keys.concat(k).join('.')
     switch (v) {
       case 'function':
         local[k] = createProxyFunction(channel, keyPath)
@@ -49,7 +48,7 @@ const registerRemote = (channel, definition, keys = []) => {
         local[k] = createProxyObservable(channel, keyPath)
         break
       default:
-        local[k] = registerRemote(channel, v, keys)
+        local[k] = registerRemote(channel, v, keys.concat(k))
     }
     return local
   }, {})
