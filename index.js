@@ -116,7 +116,7 @@ export default function(input, output, api = {}) {
 
   const subscribeLocal = (id, obs) =>
     obs
-      .takeUntil(channel.unsubscribe$.filter(x => x.id === id)) // TODO: untested?
+      .takeUntil(channel.unsubscribe$.filter(x => x.id === id))
       .subscribe(
         x   => channel.mux(id, x),
         err => channel.send({id, error: {message: err.message}}),
