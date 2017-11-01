@@ -67,30 +67,25 @@ const serializeRemote = api => {
   }, {})
 }
 
-// Represents the multiplexed pipe for a peer. Exists only to organize - it does
-// not subscribe to any streams itself.
-class Channel {
-  constructor(input, sender) {
-    this.input = input
-    this.send = (id, x) => sender([id, x])
+// Represents the multiplexed, duplex pipe for a peer. Takes a deserialized
+// stream as `input`, and a `sender` function to call when writing.
+function Channel(input, sender) {
+  const [muxed$, main$] = input.share().partition(x => x.constructor === Array)
 
-    this.main = {
-      in: this.demux('@').share(),
-      send: x => this.send('@', x)
-    }
+  this.main  = { send: sender }
 
-    this.registers    = this.main.in.filter(defined('register')).pluck('register')
-    this.subscribes   = this.main.in.filter(defined('subscribe'))
-    this.unsubscribes = this.main.in.filter(defined('unsubscribe')).pluck('unsubscribe')
-    this.completes    = this.main.in.filter(defined('complete')).pluck('complete')
-    this.methods      = this.main.in.filter(defined('method'))
-    this.results      = this.main.in.filter(defined('result'))
-    this.errors       = this.main.in.filter(defined('error'))
-  }
+  this.mux   = (id, x) => sender([id, x])
+  this.demux = id => muxed$.filter(x => x[0] === id).map(x => x[1])
 
-  demux(id) {
-    return this.input.filter(x => x[0] === id).map(x => x[1])
-  }
+  this.register$    = main$.filter(defined('register'))
+
+  this.method$      = main$.filter(defined('method'))
+  this.result$      = main$.filter(defined('result'))
+  this.error$       = main$.filter(defined('error'))
+
+  this.subscribe$   = main$.filter(defined('subscribe'))
+  this.unsubscribe$ = main$.filter(defined('unsubscribe')).map(({unsubscribe: id}) => id)
+  this.complete$    = main$.filter(defined('complete')).map(({complete: id}) => id)
 }
 
 export default function(input, output, api = {}) {
