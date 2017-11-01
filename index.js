@@ -98,8 +98,6 @@ export default function(input, output, api = {}) {
   const channel = new Channel(input, x => output.next(x))
   const anonObservables = new Map()
 
-  channel.main.send({register: serializeRemote(api)})
-
   const subscribeLocal = (id, obs) =>
     obs.takeUntil(channel.unsubscribes.filter(x => x === id))
       .subscribe(
@@ -131,6 +129,11 @@ export default function(input, output, api = {}) {
         }
       })
     }).subscribe()
+
+
+  setTimeout(() =>
+    channel.main.send({register: serializeRemote(api)})
+  , 0)
 
   return channel.registers.map(remote => registerRemote(channel, remote))
 }

@@ -9,8 +9,8 @@ rx.Observable.prototype.log = function(msg) {
 function simulatedSockets() {
   const make = (n) => {
     return {
-      in:  new rx.Subject().map(JSON.parse).log(n + ' <-').share(),
-      out: new rx.Subject().map(JSON.stringify).delay(1).log(n + ' ->').share()
+      in:  new rx.Subject().map(JSON.parse),
+      out: new rx.Subject().map(JSON.stringify).log(n + ' ->')
     }
   }
 
@@ -32,21 +32,23 @@ const connectedPeers = async (apia = {}, apib = {}) => {
 }
 
 describe('rprx', () => {
-  it('can subscribe to a remote observable', async () => {
-    const numbers = rx.Observable.from([1,2,3])
-    const [a, b] = await connectedPeers({numbers}, {})
+  context('remote observables', () => {
+    it('can subscribe', async () => {
+      const numbers = rx.Observable.from([1,2,3])
+      const [a, b] = await connectedPeers({numbers}, {})
 
-    return b.numbers.take(2).toArray().toPromise().then(x => {
-      assert.deepEqual(x, [1,2])
+      return b.numbers.take(2).toArray().toPromise().then(x => {
+        assert.deepEqual(x, [1,2])
+      })
     })
-  })
 
-  it('knows when a remote observable completes', async () => {
-    const numbers = rx.Observable.from([1,2,3])
-    const [a, b] = await connectedPeers({numbers}, {})
+    it('completes the local subscription', async () => {
+      const numbers = rx.Observable.from([1,2,3])
+      const [a, b] = await connectedPeers({numbers}, {})
 
-    return b.numbers.toArray().toPromise().then(x => {
-      assert.deepEqual(x, [1,2,3])
+      return b.numbers.toArray().toPromise().then(x => {
+        assert.deepEqual(x, [1,2,3])
+      })
     })
   })
 
