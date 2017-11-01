@@ -48,6 +48,17 @@ describe('rprx', () => {
         return b.fn().then(x => assert.equal(x, 'cells'))
       })
     })
+
+    context('errors', () => {
+      it('rejects the promise if a remote exception occurs', async () => {
+        const fn = () => { throw new Error('dreadfully') }
+        const [a, b] = await connectedPeers({fn}, {})
+
+        return b.fn()
+          .then(x => assert(false, 'promise was not rejected'))
+          .catch(x => assert.equal(x.message, 'dreadfully'))
+      })
+    })
   })
 
   describe('remote observables', () => {
@@ -81,6 +92,19 @@ describe('rprx', () => {
         aNumbers.then(x => assert.deepEqual(x, [10, 11, 12])),
         bNumbers.then(x => assert.deepEqual(x, [20, 21, 22]))
       ])
+    })
+
+    context('when the remote observable completes with an error', async () => {
+      it('completes the proxy observable when the remote completes', async () => {
+        const numbers = rx.Observable.from([1,2,3])
+          .do(x => { if (x === 2) throw new Error('dreadfully') })
+
+        const [a, b] = await connectedPeers({numbers}, {})
+
+        return b.numbers.toArray().toPromise()
+          .then(x => assert.fail('subscription did not error'))
+          .catch(x => assert.equal(x.message, 'dreadfully'))
+      })
     })
 
     context('when a remote function returns an observable', () => {
