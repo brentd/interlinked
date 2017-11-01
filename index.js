@@ -26,9 +26,9 @@ const createProxyFunction = (channel, key) =>
 const createProxyObservable = (channel, key) =>
   rx.Observable.create(observer => {
     const id = nextRequestId()
-    channel.main.send({subscribe: key, id})
     const stop = channel.completes.filter(x => x === id).merge(channel.registers)
     const sub = channel.demux(id).takeUntil(stop).subscribe(observer)
+    channel.main.send({subscribe: key, id})
     return () => {
       sub.unsubscribe()
       channel.main.send({unsubscribe: id})
@@ -41,7 +41,7 @@ const registerRemote = (channel, definition, keys = []) => {
   return Object.entries(definition).reduce((local, [k, v]) => {
     keys.push(k)
     const keyPath = keys.join('.')
-    switch (v.type) {
+    switch (v) {
       case 'function':
         local[k] = createProxyFunction(channel, keyPath)
         break
@@ -58,13 +58,12 @@ const registerRemote = (channel, definition, keys = []) => {
 // Serializes an interface into a definition that can be sent over the wire.
 const serializeRemote = api => {
   return Object.entries(api).reduce((definition, [k, v]) => {
-    if (v.subscribe) {
-      definition[k] = {key: k, type: 'observable'}
-    } else if (typeof v === 'function') {
-      definition[k] = {key: k, type: 'function'}
-    } else if (typeof v === 'object' && v !== null) {
+    if (v.subscribe)
+      definition[k] = 'observable'
+    else if (typeof v === 'function')
+      definition[k] = 'function'
+    else if (typeof v === 'object' && v !== null)
       definition[k] = serializeRemote(v)
-    }
     return definition
   }, {})
 }
