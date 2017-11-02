@@ -1,7 +1,10 @@
 import { Observable } from 'rxjs/Observable'
 import { Subject } from 'rxjs/Subject'
 
+import 'rxjs/add/observable/interval'
+import 'rxjs/add/observable/from'
 import 'rxjs/add/operator/toArray'
+import 'rxjs/add/operator/delay'
 
 import interlinked from '../src'
 import assert from 'assert'

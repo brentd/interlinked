@@ -1,8 +1,5 @@
 import { Observable } from 'rxjs/Observable'
 
-import 'rxjs/add/observable/interval'
-import 'rxjs/add/observable/from'
-import 'rxjs/add/operator/delay'
 import 'rxjs/add/operator/do'
 import 'rxjs/add/operator/filter'
 import 'rxjs/add/operator/map'
