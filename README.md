@@ -35,7 +35,7 @@ Here, only one side exposes an API. However, Interlinked is peer-to-peer: both s
 
 ### Errors
 
-Errors from the remote observables or promises are caught and sent to the calling peer. Observables will complete with an error, and will be rejected, as you'd expect.
+Errors from the remote observables or promises are caught and sent to the calling peer. Observables will complete with an error, and promises will be rejected, as you'd expect.
 
 ### Functions that return an Observable
 
