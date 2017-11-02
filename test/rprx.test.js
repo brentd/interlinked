@@ -1,5 +1,5 @@
 import rx from 'rxjs'
-import rprx from '../index.js'
+import rprx from '../src'
 import assert from 'assert'
 
 rx.Observable.prototype.log = function(msg) {
@@ -78,14 +78,14 @@ describe('rprx', () => {
       assert.deepEqual(x, [1,2,3])
     })
 
-    it.only('unsubscribes from the remote when the proxy observable unsubscribes', async () => {
+    it('unsubscribes from the remote when the proxy observable unsubscribes', async () => {
       let n = 0
       const numbers = rx.Observable.interval(10).take(3).do(() => n++)
       const [a, b] = await connectedPeers({numbers}, {})
 
       const x = await b.numbers.take(2).toArray().toPromise()
       assert.deepEqual(x, [0,1])
-      
+
       await new Promise(resolve => setTimeout(() => {
         assert.equal(n, 2)
         resolve()
