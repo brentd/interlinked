@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "scripts": {
+    "build": "babel -s inline -d lib src"
+  },
   "peerDependencies": {
     "rxjs": "^5.0.0"
   },
