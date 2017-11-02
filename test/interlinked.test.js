@@ -1,8 +1,12 @@
-import rx from 'rxjs'
+import { Observable } from 'rxjs/Observable'
+import { Subject } from 'rxjs/Subject'
+
+import 'rxjs/add/operator/toArray'
+
 import interlinked from '../src'
 import assert from 'assert'
 
-rx.Observable.prototype.log = function(msg) {
+Observable.prototype.log = function(msg) {
   return this.do(x => console.log(msg, x))
 }
 
@@ -10,8 +14,8 @@ rx.Observable.prototype.log = function(msg) {
 function simulatedSockets() {
   const make = name => {
     return {
-      in:  new rx.Subject().delay(1).map(JSON.parse),
-      out: new rx.Subject().delay(1).map(JSON.stringify).log(name + ' ->')
+      in:  new Subject().delay(1).map(JSON.parse),
+      out: new Subject().delay(1).map(JSON.stringify).log(name + ' ->')
     }
   }
 
@@ -26,8 +30,8 @@ function simulatedSockets() {
 const connectedPeers = async (apia = {}, apib = {}) => {
   const [a, b] = simulatedSockets()
   return await Promise.all([
-    interlinked(a.in, a.out, apia).first().toPromise(),
-    interlinked(b.in, b.out, apib).first().toPromise()
+    interlinked(a.in, a.out, apia).take(1).toPromise(),
+    interlinked(b.in, b.out, apib).take(1).toPromise()
   ])
 }
 
@@ -63,7 +67,7 @@ describe('interlinked', () => {
 
   describe('remote observables', () => {
     it('provides a proxy observable that emits values from the remote', async () => {
-      const numbers = rx.Observable.from([1,2,3])
+      const numbers = Observable.from([1,2,3])
       const [a, b] = await connectedPeers({numbers}, {})
 
       const x = await b.numbers.take(2).toArray().toPromise()
@@ -71,7 +75,7 @@ describe('interlinked', () => {
     })
 
     it('completes the proxy observable when the remote completes', async () => {
-      const numbers = rx.Observable.from([1,2,3])
+      const numbers = Observable.from([1,2,3])
       const [a, b] = await connectedPeers({numbers}, {})
 
       const x = await b.numbers.toArray().toPromise()
@@ -80,7 +84,7 @@ describe('interlinked', () => {
 
     it('unsubscribes from the remote when the proxy observable unsubscribes', async () => {
       let n = 0
-      const numbers = rx.Observable.interval(10).take(3).do(() => n++)
+      const numbers = Observable.interval(10).take(3).do(() => n++)
       const [a, b] = await connectedPeers({numbers}, {})
 
       const x = await b.numbers.take(2).toArray().toPromise()
@@ -93,7 +97,7 @@ describe('interlinked', () => {
     })
 
     it('can simultaneously stream values from observables on both sides', async () => {
-      const numbers = rx.Observable.interval(1).take(3)
+      const numbers = Observable.interval(1).take(3)
       const [a, b] = await connectedPeers(
         {numbers: numbers.map(x => x + 10)},
         {numbers: numbers.map(x => x + 20)}
@@ -110,7 +114,7 @@ describe('interlinked', () => {
 
     context('when the remote observable completes with an error', async () => {
       it('completes the proxy observable when the remote completes', async () => {
-        const numbers = rx.Observable.from([1,2,3])
+        const numbers = Observable.from([1,2,3])
           .do(x => { if (x === 2) throw new Error('dreadfully') })
 
         const [a, b] = await connectedPeers({numbers}, {})
@@ -123,7 +127,7 @@ describe('interlinked', () => {
 
     context('when a remote function returns an observable', () => {
       it('returns a proxy observable that emits values from the remote', async () => {
-        const fn = () => new rx.Observable.from([1,2,3])
+        const fn = () => new Observable.from([1,2,3])
         const [a, b] = await connectedPeers({fn}, {})
 
         const obs = await b.fn()

@@ -1,4 +1,16 @@
-import { Observable } from 'rxjs'
+import { Observable } from 'rxjs/Observable'
+
+import 'rxjs/add/observable/interval'
+import 'rxjs/add/observable/from'
+import 'rxjs/add/operator/delay'
+import 'rxjs/add/operator/do'
+import 'rxjs/add/operator/filter'
+import 'rxjs/add/operator/map'
+import 'rxjs/add/operator/merge'
+import 'rxjs/add/operator/partition'
+import 'rxjs/add/operator/share'
+import 'rxjs/add/operator/take'
+import 'rxjs/add/operator/takeUntil'
 
 let reqId = 0
 const nextRequestId = () => reqId++
