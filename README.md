@@ -2,7 +2,7 @@
 
 Rx-enabled peer-to-peer RPC for JavaScript.
 
-No dependencies other than [RxJS](https://github.com/Reactive-Extensions/RxJS). Use any transport and serialization you like.
+No dependencies other than [RxJS](https://github.com/reactivex/rxjs). Use any transport and serialization you like.
 
 ## Usage
 
@@ -23,6 +23,8 @@ On a connected peer:
   * Functions always return a promise that resolve once the remote function has a return value.
 
 ```javascript
+// On some other process, or machine...
+
 interlinked(input, output).subscribe(async remote => {
   remote.numbers.subscribe(console.log)
   // 0... 1... 2... 3...
@@ -47,7 +49,7 @@ interlinked(input, output, {
 })
 ```
 
-On a connected peer, the function's promise will resolve to an observable that can be subscribed to like normal.
+On a connected peer, the function's promise will resolve to an observable that can be subscribed to as if it were local.
 
 ```javascript
 interlinked(input, output).subscribe(async remote => {
@@ -73,15 +75,19 @@ npm install -S interlinked
 
 See the `example` directory for a working example of an express server and a browser connected via websocket.
 
-# TODO
+## API
 
-  * Timeouts
-  * More documentation
-  * Allow observable constructors other than RxJS 5?
-  * Optionally surface errors on the remote also (middleware?)
+Detailed API reference coming soon.
 
 ## Protocol
 
 Interlinked's protocol is loosely based on [JSON-RPC](http://www.jsonrpc.org). It is not a strict superset.
 
 [Protocol description coming soon.]
+
+## TODO
+
+  * Timeouts
+  * More documentation
+  * Allow observable constructors other than RxJS 5?
+  * Optionally surface errors on the remote also (middleware?)
