@@ -1,5 +1,5 @@
 import rx from 'rxjs'
-import rprx from '../src'
+import interlinked from '../src'
 import assert from 'assert'
 
 rx.Observable.prototype.log = function(msg) {
@@ -26,12 +26,12 @@ function simulatedSockets() {
 const connectedPeers = async (apia = {}, apib = {}) => {
   const [a, b] = simulatedSockets()
   return await Promise.all([
-    rprx(a.in, a.out, apia).first().toPromise(),
-    rprx(b.in, b.out, apib).first().toPromise()
+    interlinked(a.in, a.out, apia).first().toPromise(),
+    interlinked(b.in, b.out, apib).first().toPromise()
   ])
 }
 
-describe('rprx', () => {
+describe('interlinked', () => {
   describe('remote functions', () => {
     it('provides a proxy to the remote function that returns a promise', async () => {
       const fn = () => 'cells'

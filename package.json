@@ -4,6 +4,7 @@
   "main": "lib/index.js",
   "license": "MIT",
   "scripts": {
+    "test": "mocha",
     "build": "babel -s inline -d lib src"
   },
   "peerDependencies": {
