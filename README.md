@@ -2,9 +2,11 @@
 
 Rx-enabled peer-to-peer RPC for JavaScript.
 
+No dependencies other than [RxJS](https://github.com/Reactive-Extensions/RxJS). Use any transport and serialization you like.
+
 ## Usage
 
-Supply an input Observable, an output Subject, and a plain object as the interface you want to expose to connected peers.
+Supply an input Observable, an output Subject, and a plain object as the interface you want to expose.
 
 ```javascript
 const api = {
@@ -15,24 +17,29 @@ const api = {
 interlinked(input, output, api)
 ```
 
-On a connected peer, Observables on the remote API can be used like they are local. Functions always return a promise that resolve once received from the remote.
+On a connected peer:
+
+  * Use remote observables like they are local.
+  * Functions always return a promise that resolve once the remote function has a return value.
 
 ```javascript
 interlinked(input, output).subscribe(async remote => {
-  remote.numbers.subscribe(console.log)  // 0... 1... 2... 3...
-  console.log(await remote.hello())      // interlinked
+  remote.numbers.subscribe(console.log)
+  // 0... 1... 2... 3...
+  console.log(await remote.hello())
+  // interlinked
 })
 ```
 
-Above, only one side exposes an API, but Interlinked is peer-to-peer - both sides can expose an interface of functions and observables.
+Here, only one side exposes an API. However, Interlinked is peer-to-peer: both sides can expose an interface of functions and observables.
 
 ### Errors
 
-Errors from the remote observables or promises caught and sent to the calling peer. Observables will complete with an error, and promises from function calls will be rejected.
+Errors from the remote observables or promises are caught and sent to the calling peer. Observables will complete with an error, and will be rejected, as you'd expect.
 
 ### Functions that return an Observable
 
-Remote functions may return an Observable.
+Remote functions may return an observable.
 
 ```javascript
 interlinked(input, output, {
@@ -40,12 +47,13 @@ interlinked(input, output, {
 })
 ```
 
-On a connected peer, the function's promise will resolve to an Observable.
+On a connected peer, the function's promise will resolve to an observable that can be subscribed to like normal.
 
 ```javascript
 interlinked(input, output).subscribe(async remote => {
   const obs = await remote.countTo(3)
-  obs.subscribe(console.log) // 1... 2... 3
+  obs.subscribe(console.log)
+  // 1... 2... 3
 })
 ```
 
@@ -58,7 +66,7 @@ yarn add interlinked
 or
 
 ```
-npm install iS interlinked
+npm install -S interlinked
 ```
 
 ## Full Example
@@ -69,9 +77,11 @@ See the `example` directory for a working example of an express server and a bro
 
   * Timeouts
   * More documentation
+  * Allow observable constructors other than RxJS 5?
+  * Optionally surface errors on the remote also (middleware?)
 
 ## Protocol
 
-Interlinked's wire protocol is loosely based on [JSON-RPC](http://www.jsonrpc.org), but is not a strict superset.
+Interlinked's protocol is loosely based on [JSON-RPC](http://www.jsonrpc.org). It is not a strict superset.
 
 [Protocol description coming soon.]
