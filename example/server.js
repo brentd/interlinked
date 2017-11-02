@@ -6,9 +6,13 @@ import webpack from 'webpack'
 import path from 'path'
 
 import rx from 'rxjs'
-import rprx from '../index.js'
+import interlinked from '../lib'
 
 var app = express()
+
+rx.Observable.prototype.log = function(msg) {
+  return this.do(x => console.log(msg, x))
+}
 
 app.use(webpackMiddleware(
   webpack(require('./webpack.config')), {noInfo: true}
@@ -29,10 +33,12 @@ wss.on('connection', (ws, req) => {
   const output = new rx.Subject()
   output.map(JSON.stringify).log('->').subscribe(x => ws.send(x))
 
-  const quotes = rx.Observable.interval(1000).take(4)
-  const positions = rx.Observable.interval(2000).take(2).map(x => x + 100)
+  const numbers = rx.Observable.interval(1000).take(4)
 
-  rprx(messages, output, { quotes, positions })
+  const alpha = rx.Observable.from(['a','b','c','d'])
+    .zip(rx.Observable.interval(500)).map(x => x[0])
+
+  interlinked(messages, output, { numbers, alpha })
 })
 
 server.listen(3004, () =>
