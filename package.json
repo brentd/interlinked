@@ -1,8 +1,14 @@
 {
   "name": "interlinked",
   "version": "0.1.0",
+  "description": "Rx-enabled peer-to-peer RPC",
   "main": "lib/index.js",
   "license": "MIT",
+  "author": "Brent Dillingham",
+  "homepage": "https://github.com/brentd/interlinked",
+  "bugs": {
+    "url": "https://github.com/brentd/interlinked/issues"
+  },
   "scripts": {
     "test": "mocha",
     "build": "babel -s inline -d lib src"
