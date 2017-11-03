@@ -91,7 +91,7 @@ function Channel(input, sender) {
   this.mux   = (id, x) => sender([id, x])
   this.demux = id => muxed$.filter(x => x[0] === id).map(x => x[1])
 
-  const normalize = key => x => { return { id: x[key] } }
+  const normalize = key => x => ({id: x[key]})
 
   this.register$    = main$.filter(defined('register'))
   this.method$      = main$.filter(defined('method'))
