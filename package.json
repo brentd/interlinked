@@ -6,9 +6,15 @@
   "license": "MIT",
   "author": "Brent Dillingham",
   "homepage": "https://github.com/brentd/interlinked",
+  "repository": "brentd/interlinked",
   "bugs": {
     "url": "https://github.com/brentd/interlinked/issues"
   },
+  "keywords": [
+    "rpc",
+    "rx",
+    "api"
+  ],
   "scripts": {
     "test": "mocha",
     "build": "babel -s inline -d lib src"
