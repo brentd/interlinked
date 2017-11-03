@@ -103,7 +103,9 @@ function Channel(input, sender) {
 }
 
 export default function(input, output, api = {}) {
-  const channel = new Channel(input, x => output.next(x))
+  const sender = output.next ? x => output.next(x) : output
+  const channel = new Channel(input, sender)
+
   const anonObservables = new Map()
 
   channel.method$
