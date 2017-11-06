@@ -1,5 +1,7 @@
 # Interlinked
 
+[![NPM version](https://img.shields.io/npm/v/interlinked.svg)](https://www.npmjs.com/package/interlinked)
+
 Rx-enabled peer-to-peer RPC for JavaScript.
 
 No dependencies other than [RxJS](https://github.com/reactivex/rxjs). Use any transport and serialization you like.
