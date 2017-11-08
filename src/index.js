@@ -12,11 +12,10 @@ import 'rxjs/add/operator/takeUntil'
 let reqId = 0
 const nextRequestId = () => reqId++
 
-const defined    = prop => x => x[prop] !== undefined
 const getKeyPath = (obj, keyPath) => keyPath.split('.').reduce((acc, k) => acc[k], obj)
 
 // Returns a function that notifies the remote to execute the function
-// identified by `key`. Returns a Promise that will resolve when the
+// identified by `key`. That function a Promise that will resolve when the
 // remote responds with a return value.
 const createProxyFunction = (channel, key) =>
   (...params) => {
@@ -26,7 +25,7 @@ const createProxyFunction = (channel, key) =>
       .filter(x => x.id === id)
       .take(1)
       .do(x => { if (x.error) throw new Error(x.error.message) })
-      .map(x => x.observable ? createProxyObservable(channel, id) : x.result)
+      .map(x => x.observable ? createProxyObservable(channel, x.result) : x.result)
       .toPromise()
   }
 
@@ -36,14 +35,14 @@ const createProxyFunction = (channel, key) =>
 const createProxyObservable = (channel, key) =>
   Observable.create(observer => {
     const id = nextRequestId()
-    const stop = channel.complete$
-      .merge(channel.error$)
+    const stop = channel.complete$.merge(channel.error$)
       .filter(x => x.id === id)
       .do(x => { if (x.error) throw new Error(x.error.message) })
       .merge(channel.register$)
-    const sub = channel.demux(id).takeUntil(stop).subscribe(observer)
 
+    const sub = channel.demux(id).takeUntil(stop).subscribe(observer)
     channel.send({id, subscribe: key})
+
     return () => {
       sub.unsubscribe()
       channel.send({unsubscribe: id})
@@ -55,12 +54,15 @@ const createProxyObservable = (channel, key) =>
 const registerRemote = (channel, definition, keys = []) => {
   return Object.entries(definition).reduce((local, [k, v]) => {
     const keyPath = keys.concat(k).join('.')
-    switch (v) {
+    switch (v.type) {
       case 'function':
         local[k] = createProxyFunction(channel, keyPath)
         break
       case 'observable':
-        local[k] = createProxyObservable(channel, keyPath)
+        local[k] = createProxyObservable(channel, v.id)
+        break
+      case 'subject':
+        local[k] = createProxyObservable(channel, v.id)
         break
       default:
         local[k] = registerRemote(channel, v, keys.concat(k))
@@ -70,14 +72,21 @@ const registerRemote = (channel, definition, keys = []) => {
 }
 
 // Serializes an interface into a definition that can be sent over the wire.
-const serializeRemote = api => {
+const serializeRemote = (channel, api) => {
   return Object.entries(api).reduce((definition, [k, v]) => {
-    if (v.subscribe)
-      definition[k] = 'observable'
-    else if (typeof v === 'function')
-      definition[k] = 'function'
-    else if (typeof v === 'object' && v !== null)
-      definition[k] = serializeRemote(v)
+    if (v.subscribe) {
+      const obsId = nextRequestId()
+      channel.observables.set(obsId, v)
+      definition[k] = {type: 'observable', id: obsId}
+    } else if (v.next) {
+      const obsId = nextRequestId()
+      channel.observables.set(obsId, v)
+      definition[k] = {type: 'subject', id: obsId}
+    } else if (typeof v === 'function') {
+      definition[k] = {type: 'function'}
+    } else if (typeof v === 'object' && v !== null) {
+      definition[k] = serializeRemote(channel, v)
+    }
     return definition
   }, {})
 }
@@ -87,10 +96,13 @@ const serializeRemote = api => {
 function Channel(input, sender) {
   const [muxed$, main$] = input.share().partition(x => x.constructor === Array)
 
+  this.observables = new Map()
+
   this.send  = sender
   this.mux   = (id, x) => sender([id, x])
   this.demux = id => muxed$.filter(x => x[0] === id).map(x => x[1])
 
+  const defined   = prop => x => x[prop] !== undefined
   const normalize = key => x => ({id: x[key]})
 
   this.register$    = main$.filter(defined('register'))
@@ -106,48 +118,36 @@ export default function(input, output, api = {}) {
   const sender = output.next ? x => output.next(x) : output
   const channel = new Channel(input, sender)
 
-  const anonObservables = new Map()
+  channel.method$.subscribe(({method, params, id}) => {
+    try {
+      const result = getKeyPath(api, method)(...params)
+      Promise.resolve(result).then(x => {
+        if (x.subscribe) {
+          const obsId = nextRequestId()
+          channel.observables.set(obsId, x)
+          channel.send({id, result: obsId, observable: true})
+        } else {
+          channel.send({id, result: x})
+        }
+      })
+    } catch(e) {
+      channel.send({id, error: {message: e.message}})
+    }
+  })
 
-  channel.method$
-    .map(({method, params, id}) => {
-      try {
-        const result = getKeyPath(api, method)(...params)
-        Promise.resolve(result).then(x => {
-          if (x.subscribe) {
-            anonObservables.set(id, x)
-            channel.send({id, result: null, observable: true})
-          } else {
-            channel.send({id, result: x})
-          }
-        })
-      } catch(e) {
-        channel.send({id, error: {message: e.message}})
-      }
-    }).subscribe()
-
-  const subscribeLocal = (id, obs) =>
-    obs
+  channel.subscribe$.subscribe(({subscribe: obsId, id}) => {
+    channel.observables.get(obsId)
       .takeUntil(channel.unsubscribe$.filter(x => x.id === id))
       .subscribe(
         x   => channel.mux(id, x),
         err => channel.send({id, error: {message: err.message}}),
         ()  => channel.send({complete: id})
       )
-
-  const [namedSubscribe$, anonSubscribe$] = channel.subscribe$
-    .partition(({subscribe: key}) => typeof key === 'string')
-
-  namedSubscribe$
-    .map(({subscribe: keyPath, id}) => subscribeLocal(id, getKeyPath(api, keyPath)))
-    .subscribe()
-  anonSubscribe$
-    .map(({subscribe: obsId, id}) => subscribeLocal(id, anonObservables.get(obsId)))
-    .subscribe()
+  })
 
   setTimeout(() =>
-    channel.send({register: serializeRemote(api)})
+    channel.send({register: serializeRemote(channel, api)})
   , 0)
 
-  return channel.register$
-    .map(({register: definition}) => registerRemote(channel, definition))
+  return channel.register$.map(({register: definition}) => registerRemote(channel, definition))
 }
