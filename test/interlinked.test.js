@@ -8,6 +8,7 @@ import 'rxjs/add/operator/delay'
 
 import interlinked from '../src'
 import assert from 'assert'
+import { marbles } from 'rxjs-marbles'
 
 Observable.prototype.log = function(msg) {
   return this.do(x => console.log(msg, x))
@@ -137,6 +138,17 @@ describe('interlinked', () => {
         const x = await obs.toArray().toPromise()
         assert.deepEqual(x, [1,2,3])
       })
+    })
+  })
+
+  describe('remote subjects', () => {
+    it('can next() values from the local peer to the remote', async () => {
+      const subject = new Subject()
+      const [a, b] = await connectedPeers({subject}, {})
+
+      b.subject.next('cells')
+      const x = await subject.take(1).toPromise()
+      assert.equal(x, 'cells')
     })
   })
 
