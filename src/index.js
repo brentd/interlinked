@@ -14,9 +14,9 @@ import 'rxjs/add/operator/finally'
 let reqId = 0
 const nextPeerId = () => reqId++
 
-// Returns a function that notifies the remote to execute the function
-// identified by `key`. That function a Promise that will resolve when the
-// remote responds with a return value.
+// Returns a function that notifies the remote to execute the method
+// identified by `key`. The function returns a Promise that will resolve when the
+// remote has a return value.
 const createProxyFunction = (channel, key) =>
   (...params) => {
     const id = nextPeerId()
@@ -59,11 +59,11 @@ const registerRemote = (channel, definition, keys = []) => {
         local[k] = createProxyFunction(channel, keyPath)
         break
       case 'observable':
-        local[k] = createProxyObservable(channel, v.id)
+        local[k] = createProxyObservable(channel, v.key)
         break
       case 'subject':
-        local[k] = createProxyObservable(channel, v.id)
-        local[k].next = x => channel.mux(v.id, x)
+        local[k] = createProxyObservable(channel, v.key)
+        local[k].next = x => channel.mux(v.key, x)
         break
       default:
         local[k] = registerRemote(channel, v, keys.concat(k))
@@ -82,9 +82,9 @@ const serializeRemote = (channel, api, keys = []) => {
 
       if (typeof v.next === 'function') {
         listenNext(channel, v, obsId)
-        definition[k] = {type: 'subject', id: obsId}
+        definition[k] = {type: 'subject', key: obsId}
       } else {
-        definition[k] = {type: 'observable', id: obsId}
+        definition[k] = {type: 'observable', key: obsId}
       }
     } else if (typeof v === 'function') {
       listenMethod(channel, v, keyPath)
@@ -100,24 +100,24 @@ const listenMethod = (channel, fn, name) =>
   channel.method$
     .filter(x => x.method == name)
     .subscribe(({method, params, id}) => {
+      let result
       try {
-        fn(...params)
+        result = fn(...params)
       } catch(e) {
-        channel.send({id, error: {message: e.message}})
+        return channel.send({id, error: {message: e.message}})
       }
 
-      try {
-        Promise.resolve(fn(...params)).then(x => {
-          if (x.subscribe) {
-            const obsId = nextPeerId()
-            listenSubscribe(channel, x, obsId)
-            channel.send({id, result: obsId, observable: true})
-          } else {
-            channel.send({id, result: x})
-          }
-        })
-      } catch(e) {
-      }
+      Promise.resolve(result).then(x => {
+        if (x.subscribe) {
+          const obsId = nextPeerId()
+          listenSubscribe(channel, x, obsId)
+          channel.send({id, result: obsId, observable: true})
+        } else {
+          channel.send({id, result: x})
+        }
+      }).catch(e => {
+        channel.send({id, error: {message: e.message}})
+      })
     })
 
 const listenSubscribe = (channel, obs, obsId) =>
@@ -131,9 +131,8 @@ const listenSubscribe = (channel, obs, obsId) =>
       )
     ).subscribe()
 
-const listenNext = (channel, obs, obsId) => {
-
-}
+const listenNext = (channel, subject, obsId) =>
+  channel.demux(obsId).subscribe(subject)
 
 // Represents the multiplexed, duplex pipe for a peer. Takes a deserialized
 // stream as `input`, and a `sender` function to call when writing.

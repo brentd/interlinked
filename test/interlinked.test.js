@@ -38,20 +38,6 @@ const connectedPeers = async (apia = {}, apib = {}) => {
     interlinked(b.in, b.out, apib).take(1).toPromise()
   ])
 }
-//
-// it.only('', marbles(m => {
-//   const input = m.hot('a-b-c-d|')
-//   const sub   =       '^------!'
-//
-//   const shared = input.share()
-//
-//   shared.do(() => console.log('side effect')).finally( () => console.log('completed 1') ).subscribe()
-//   shared.do(() => console.log('side effect')).finally( () => console.log('completed 2') ).take(1).subscribe()
-//
-//   m.has(input, sub)
-//   // input.subscribe()
-// }))
-
 
 describe('interlinked', () => {
   describe('remote functions', () => {
@@ -163,22 +149,8 @@ describe('interlinked', () => {
       b.subject.next('cells')
       const x = await subject.take(1).toPromise()
       assert.equal(x, 'cells')
-      // assert.deepEqual(x, [1,2,3])
     })
   })
-
-  // describe.only('remote Subjects', () => {
-  //   it('fff', async () => {
-  //     const subject = new Subject()
-  //     const [a, b] = await connectedPeers({subject}, {})
-  //
-  //     const promise = subject.take(1).toPromise()
-  //     b.subject.next('a')
-  //
-  //     const x = await promise
-  //     assert.equal(x, 'a')
-  //   })
-  // })
 
   describe('registration', () => {
     it('can register an interface on both peers', async () => {
