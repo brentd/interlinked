@@ -14,12 +14,10 @@ const log = msg => x => console.log(msg, x)
 
 // Simulates a pair of network sockets that are connected and serialize their output.
 function simulatedSockets() {
-  const make = name => {
-    return {
-      in:  new ReplaySubject(1).map(JSON.parse),
-      out: new Subject().map(JSON.stringify).do(log(name + ' ->'))
-    }
-  }
+  const make = name => ({
+    in:  new ReplaySubject(1).map(JSON.parse),
+    out: new Subject().map(JSON.stringify).do(log(name + ' ->'))
+  })
 
   const [a, b] = [make('a'), make('b')]
 
