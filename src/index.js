@@ -10,9 +10,10 @@ import 'rxjs/add/operator/share'
 import 'rxjs/add/operator/take'
 import 'rxjs/add/operator/takeUntil'
 import 'rxjs/add/operator/finally'
+import 'rxjs/add/operator/publishReplay'
 
-let reqId = 0
-const nextPeerId = () => reqId++
+let peerId = 0
+const nextPeerId = () => peerId++
 
 // Returns a function that notifies the remote to execute the method identified
 // by `key`. The returned function returns a Promise that will resolve when the
@@ -20,14 +21,17 @@ const nextPeerId = () => reqId++
 const createProxyFunction = (channel, key) =>
   (...params) => {
     const id = nextPeerId()
-    channel.send({id, method: key, params})
-    return channel.result$.merge(channel.error$)
+    const promise =  channel.result$.merge(channel.error$)
       .takeUntil(channel.register$)
       .filter(x => x.id === id)
       .take(1)
       .do(x => { if (x.error) throw new Error(x.error.message) })
       .map(x => x.observable ? createProxyObservable(channel, x.result) : x.result)
       .toPromise()
+
+    channel.send({id, method: key, params})
+
+    return promise
   }
 
 // Returns an observable that, when subscribed to, notifies the remote
@@ -40,13 +44,15 @@ const createProxyObservable = (channel, key) =>
       .filter(x => x.id === id)
       .do(x => { if (x.error) throw new Error(x.error.message) })
 
-    channel.send({id, subscribe: key})
-
-    return channel.demux(id)
+    const sub = channel.demux(id)
       .takeUntil(channel.register$)
       .takeUntil(stop)
       .finally(() => channel.send({unsubscribe: id}))
       .subscribe(observer)
+
+    channel.send({id, subscribe: key})
+
+    return sub
   })
 
 // Sets up proxy functions and observables as defined by the serialized remote
@@ -98,7 +104,7 @@ const serializeRemote = (channel, api, keys = []) => {
 
 const listenMethod = (channel, fn, name) =>
   channel.method$
-    .filter(x => x.method == name)
+    .filter(x => x.method === name)
     .subscribe(({method, params, id}) => {
       let result
       try {
@@ -122,14 +128,16 @@ const listenMethod = (channel, fn, name) =>
 
 const listenSubscribe = (channel, obs, obsId) =>
   channel.subscribe$
-    .filter(x => x.subscribe == obsId)
+    .filter(x => x.subscribe === obsId)
     .mergeMap(({id}) =>
-      obs.takeUntil(channel.unsubscribe$.filter(x => x.id === id)).do(
-        x   => channel.mux(id, x),
-        err => channel.send({id, error: {message: err.message}}),
-        ()  => channel.send({complete: id})
-      )
-    ).subscribe()
+       obs
+        .takeUntil(channel.unsubscribe$.filter(x => x.id === id))
+        .do(
+          x   => channel.mux(id, x),
+          err => channel.send({id, error: {message: err.message}}),
+          ()  => channel.send({complete: id})
+        )
+    ).subscribe({error: e => console.log(e)})
 
 const listenNext = (channel, subject, obsId) =>
   channel.demux(obsId).subscribe(subject)
@@ -159,9 +167,13 @@ export default function(input, output, api = {}) {
   const sender = output.next ? x => output.next(x) : output
   const channel = new Channel(input, sender)
 
-  setTimeout(() =>
-    channel.send({register: serializeRemote(channel, api)})
-  , 0)
+  const remotes$ = channel.register$
+    .map(({register: definition}) => registerRemote(channel, definition))
+    .publishReplay(1)
 
-  return channel.register$.map(({register: definition}) => registerRemote(channel, definition))
+  remotes$.connect()
+
+  channel.send({register: serializeRemote(channel, api)})
+
+  return remotes$
 }
