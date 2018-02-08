@@ -1,5 +1,6 @@
 import { Observable } from 'rxjs/Observable'
 
+import 'rxjs/add/operator/count'
 import 'rxjs/add/operator/do'
 import 'rxjs/add/operator/filter'
 import 'rxjs/add/operator/map'
@@ -16,12 +17,13 @@ let peerId = 0
 const nextPeerId = () => peerId++
 
 // Returns a function that notifies the remote to execute the method identified
-// by `key`. The returned function returns a Promise that will resolve when the
+// by `key`. The function returns a Promise that will resolve when the
 // remote responds with a result.
 const createProxyFunction = (channel, key) =>
   (...params) => {
     const id = nextPeerId()
     const promise =  channel.result$.merge(channel.error$)
+      .takeUntil(channel.disconnect$)
       .takeUntil(channel.register$)
       .filter(x => x.id === id)
       .take(1)
@@ -45,6 +47,7 @@ const createProxyObservable = (channel, key) =>
       .do(x => { if (x.error) throw new Error(x.error.message) })
 
     const sub = channel.demux(id)
+      .takeUntil(channel.disconnect$)
       .takeUntil(channel.register$)
       .takeUntil(stop)
       .finally(() => channel.send({unsubscribe: id}))
@@ -78,7 +81,8 @@ const registerRemote = (channel, definition, keys = []) => {
   }, {})
 }
 
-// Serializes an interface into a definition that can be sent over the wire.
+// Serializes an interface into a definition that can be sent over the wire,
+// while also setting up listeners on the remote.
 const serializeRemote = (channel, api, keys = []) => {
   return Object.entries(api).reduce((definition, [k, v]) => {
     const keyPath = keys.concat(k).join('.')
@@ -102,6 +106,7 @@ const serializeRemote = (channel, api, keys = []) => {
   }, {})
 }
 
+// Listen for the remote to call the local method `fn` identified by `name`.
 const listenMethod = (channel, fn, name) =>
   channel.method$
     .filter(x => x.method === name)
@@ -126,26 +131,31 @@ const listenMethod = (channel, fn, name) =>
       })
     })
 
+// Listen for the remote to subscribe to the local observer `obs` identified by `obsId`.
 const listenSubscribe = (channel, obs, obsId) =>
   channel.subscribe$
     .filter(x => x.subscribe === obsId)
     .mergeMap(({id}) =>
        obs
+        .takeUntil(channel.disconnect$)
         .takeUntil(channel.unsubscribe$.filter(x => x.id === id))
         .do(
           x   => channel.mux(id, x),
           err => channel.send({id, error: {message: err.message}}),
           ()  => channel.send({complete: id})
         )
-    ).subscribe({error: e => console.log(e)})
+    ).subscribe({error: e => console.log('[interlinked]', e)})
 
+// Listen for the remote to `next` values to the subject identified by `obsId`.
+// This will also forward complete and error events to the subject.
 const listenNext = (channel, subject, obsId) =>
   channel.demux(obsId).subscribe(subject)
 
 // Represents the multiplexed, duplex pipe for a peer. Takes a deserialized
 // stream as `input`, and a `sender` function to call when writing.
 function Channel(input, sender) {
-  const [muxed$, main$] = input.share().partition(x => x.constructor === Array)
+  input = input.share()
+  const [muxed$, main$] = input.partition(x => x.constructor === Array)
 
   this.send  = sender
   this.mux   = (id, x) => sender([id, x])
@@ -161,6 +171,9 @@ function Channel(input, sender) {
   this.unsubscribe$ = main$.filter(defined('unsubscribe')).map(normalize('unsubscribe'))
   this.complete$    = main$.filter(defined('complete')).map(normalize('complete'))
   this.error$       = main$.filter(defined('error'))
+
+  // This will emit when the input completes, e.g. from a socket disconnect.
+  this.disconnect$  = input.count()
 }
 
 export default function(input, output, api = {}) {

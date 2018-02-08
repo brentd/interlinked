@@ -3,6 +3,7 @@ import { Subject } from 'rxjs/Subject'
 import { ReplaySubject } from 'rxjs/ReplaySubject'
 
 import 'rxjs/add/observable/of'
+import 'rxjs/add/observable/timer'
 import 'rxjs/add/operator/toArray'
 import 'rxjs/add/operator/catch'
 
@@ -41,7 +42,7 @@ const link2 = (apia, apib) => {
   ]
 }
 
-const remotes = async (apia, apib) => {
+const remotes = (apia, apib) => {
   const [a, b] = link2(apia, apib)
   return Promise.all([
     a.take(1).toPromise(),
@@ -85,14 +86,28 @@ describe('interlinked', () => {
       link({obs}).subscribe(remote => m.equal(remote.obs, 'a-b-c'))
     }))
 
-    it('completes the proxy observable when the remote completes', marbles(m => {
+    it('completes the proxy observable when the remote observable completes', marbles(m => {
       const obs = m.cold('---|')
       const subs =       '^--!'
       link({obs}).subscribe(remote => m.equal(remote.obs, obs))
       m.has(obs, subs)
     }))
 
-    it('unsubscribes from the remote when the proxy observable unsubscribes', marbles(m => {
+    it('unsubscribes from the remote observable if the input completes', marbles(m => {
+      const obs  = m.cold('a-b-c-d-|')
+      const subs =        '^-!'
+
+      const [a, b] = simulatedSockets()
+
+      interlinked(a.in.takeUntil(Observable.timer(20, m.scheduler)), a.out, {obs})
+      const local = interlinked(b.in, b.out, {})
+
+      local.mergeMap(remote => remote.obs).subscribe()
+
+      m.has(obs, subs)
+    }))
+
+    it('unsubscribes from the remote when the proxy observable completes', marbles(m => {
       const obs = m.cold('a-b-c|')
       const sub =        '^-!'
 
@@ -153,8 +168,23 @@ describe('interlinked', () => {
         remote.subject.next('a')
         remote.subject.next('b')
         remote.subject.next('c')
+
         m.equal(subject, '(abc)')
       })
+    }))
+
+    it('completes the subject when the connection completes', marbles(m => {
+      const subject = new ReplaySubject(2)
+      const [a, b] = simulatedSockets()
+
+      interlinked(a.in, a.out, {subject})
+      interlinked(b.in, b.out).subscribe(remote => {
+        remote.subject.next('a')
+        remote.subject.next('b')
+        a.in.complete()
+      })
+
+      m.equal(subject, '(ab|)')
     }))
   })
 
