@@ -16,9 +16,9 @@ export default function interlinked(subject, api = {}) {
   ).shareReplay(1)
 
   const serverOut$ = createServer(api, input)
-  const proxyOut$  = proxies$.pluck('output').switchMap(obs => obs)
+  const proxyOut$  = proxies$.switchMap(obs => obs)
 
   Observable.merge(serverOut$, proxyOut$).subscribe(x => subject.next(x))
 
-  return proxies$.pluck('proxy')
+  return proxies$.pluck('api')
 }

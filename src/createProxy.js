@@ -17,9 +17,10 @@ export default function createProxy(definition, input$) {
       return o
     }, {})
 
-  const proxy = reduce(definition)
+  const obs = output.asObservable()
+  obs.api = reduce(definition)
 
-  return {proxy, output: output.asObservable()}
+  return obs
 }
 
 function createProxyFunction(input$, keyPath, send) {

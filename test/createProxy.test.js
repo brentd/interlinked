@@ -18,10 +18,10 @@ describe('createProxy', () => {
         }
       }
       const input = Observable.never()
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
-      assert.equal(typeof api.within.cells, 'function')
-      assert(api.within.cells() instanceof Promise)
+      assert.equal(typeof proxy.api.within.cells, 'function')
+      assert(proxy.api.within.cells() instanceof Promise)
     })
 
     it('emits a method message when the proxy function is called', marbles(m => {
@@ -29,14 +29,14 @@ describe('createProxy', () => {
         cells: {_type: 'function'}
       }
       const input = Observable.never()
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
       const message = {id: 0, method: 'cells', params: []}
       const time     = m.time('--|')
       const expected = m.hot( '--m', {m: message})
 
-      m.scheduler.schedule(() => api.cells(), time)
-      m.equal(output, expected)
+      m.scheduler.schedule(() => proxy.api.cells(), time)
+      m.equal(proxy, expected)
     }))
 
     it('resolves the promise when the input emits a result', marbles(async m => {
@@ -44,9 +44,9 @@ describe('createProxy', () => {
         cells: {_type: 'function'}
       }
       const input = m.hot('--m', {m: {id: 0, result: 'interlinked'}})
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
-      const result = await api.cells()
+      const result = await proxy.api.cells()
       assert.equal(result, 'interlinked')
     }))
 
@@ -55,10 +55,10 @@ describe('createProxy', () => {
         cells: {_type: 'function'}
       }
       const input = m.hot('--m', {m: {id: 0, error: {message: 'dreadfully'}}})
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
       try {
-        await api.cells()
+        await proxy.api.cells()
         assert.fail('expected promise to throw')
       } catch(e) {
         assert.equal(e.name, 'Error')
@@ -75,16 +75,16 @@ describe('createProxy', () => {
         }
       }
       const input = Observable.never()
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
-      assert(api.within.obs instanceof Observable)
+      assert(proxy.api.within.obs instanceof Observable)
 
       const message = {id: 0, subscribe: 'within.obs'}
       const time     = m.time('---|')
       const expected = m.hot( '---m', {m: message})
 
-      m.scheduler.schedule(() => api.within.obs.subscribe(), time)
-      m.equal(output, expected)
+      m.scheduler.schedule(() => proxy.api.within.obs.subscribe(), time)
+      m.equal(proxy, expected)
     }))
 
     it('sends an unsubscribe message when the proxy observable is unsubscribed from', marbles(m => {
@@ -94,7 +94,7 @@ describe('createProxy', () => {
         obs: {_type: 'observable'}
       }
       const input = Observable.never()
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
       const subscribe = {id: 0, subscribe: 'obs'}
       const unsubscribe = {unsubscribe: 0}
@@ -103,10 +103,10 @@ describe('createProxy', () => {
       const delay    = Observable.timer(time)
 
       delay.subscribe(() =>
-        api.obs.takeUntil(delay).subscribe()
+        proxy.api.obs.takeUntil(delay).subscribe()
       )
 
-      m.equal(output, expected)
+      m.equal(proxy, expected)
     }))
 
     it('manages multiple subscriptions independently', marbles(m => {
@@ -116,7 +116,7 @@ describe('createProxy', () => {
         obs: {_type: 'observable'}
       }
       const input = Observable.never()
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
       const delay = time => Observable.timer(time)
 
@@ -132,11 +132,11 @@ describe('createProxy', () => {
       const expected  = m.hot( '---(12)---(34)', messages)
 
       delay(subTime).subscribe(() => {
-        api.obs.takeUntil(delay(unsubTime)).subscribe()
-        api.obs.takeUntil(delay(unsubTime)).subscribe()
+        proxy.api.obs.takeUntil(delay(unsubTime)).subscribe()
+        proxy.api.obs.takeUntil(delay(unsubTime)).subscribe()
       })
 
-      m.equal(output, expected)
+      m.equal(proxy, expected)
     }))
 
     it('emits multiplexed messages corresponding to the subscription transaction id', marbles(m => {
@@ -157,9 +157,10 @@ describe('createProxy', () => {
       const input    = m.hot( '---------1-2-3', messages)
       const expected = m.cold('---------1-2--', emits)
 
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
+      const {api} = proxy
 
-      m.equal(api.obs, expected)
+      m.equal(proxy.api.obs, expected)
     }))
 
     it('completes the proxy observable when a complete message is received', marbles(m => {
@@ -173,9 +174,9 @@ describe('createProxy', () => {
       const input    = m.hot( '-1---c', messages)
       const expected = m.cold('-1---|', {1: 'interlinked'})
 
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
-      m.equal(api.obs, expected)
+      m.equal(proxy.api.obs, expected)
     }))
 
     it('completes the proxy observable with an error when an error message is received', marbles(m => {
@@ -189,9 +190,9 @@ describe('createProxy', () => {
       const input    = m.hot( '-1---e', messages)
       const expected = m.cold('-1---#', {1: 'interlinked'}, new Error('dreadfully distinct'))
 
-      const {proxy: api, output} = createProxy(definition, input)
+      const proxy = createProxy(definition, input)
 
-      m.equal(api.obs, expected)
+      m.equal(proxy.api.obs, expected)
     }))
   })
 })
