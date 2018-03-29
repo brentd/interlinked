@@ -1,10 +1,10 @@
 import { Observable } from 'rxjs'
 import { Subject } from 'rxjs'
-
-import interlinked from '../src/rewrite'
-import { resetTxId } from '../src/util'
 import assert from 'assert'
 import { marbles } from 'rxjs-marbles'
+
+import interlinked from '../src/index'
+import { resetTxId } from '../src/util'
 
 const log = msg => x => console.log(msg, x)
 

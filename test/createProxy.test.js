@@ -1,9 +1,9 @@
 import { Observable } from 'rxjs'
-
-import createProxy from '../src/createProxy'
 import { resetTxId } from '../src/util'
 import assert from 'assert'
 import { marbles } from 'rxjs-marbles'
+
+import createProxy from '../src/createProxy'
 
 describe('createProxy', () => {
   beforeEach(() => {

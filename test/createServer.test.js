@@ -1,8 +1,8 @@
 import { Observable } from 'rxjs'
-
-import createServer from '../src/createServer'
 import assert from 'assert'
 import { marbles } from 'rxjs-marbles'
+
+import createServer from '../src/createServer'
 
 describe('createServer()', () => {
   it('returns an observable', marbles(m => {
