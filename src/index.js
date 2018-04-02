@@ -4,9 +4,6 @@ import createServer from './createServer'
 import createProxy from './createProxy'
 import { hasProperty } from './util'
 
-const log = msg => x => console.log(msg, x)
-Observable.prototype.log = function(msg) { return this.do(log(msg)) }
-
 export default function interlinked(subject, api = {}) {
   const input = Observable.from(subject).share()
   const [publishes$, rest$] = input.partition(hasProperty('publish'))

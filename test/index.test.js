@@ -15,8 +15,8 @@ const log = msg => x => console.log(msg, x)
 //   b.next('hello a') // emits on `a`
 //
 function simulatedSockets() {
-  const outA = new Subject().map(JSON.stringify).log('a.out').share()
-  const outB = new Subject().map(JSON.stringify).log('b.out').share()
+  const outA = new Subject().map(JSON.stringify).do(x => console.log('a.out', x)).share()
+  const outB = new Subject().map(JSON.stringify).do(x => console.log('b.out', x)).share()
 
   return [
     Subject.create(outA, outB).map(JSON.parse),

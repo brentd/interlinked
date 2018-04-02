@@ -5,12 +5,12 @@ import http from 'http'
 import webpack from 'webpack'
 import path from 'path'
 
-import rx from 'rxjs'
+import { Observable, Subject } from 'rxjs'
 import interlinked from '../lib'
 
 var app = express()
 
-rx.Observable.prototype.log = function(msg) {
+Observable.prototype.log = function(msg) {
   return this.do(x => console.log(msg, x))
 }
 
@@ -26,19 +26,24 @@ const server = http.createServer(app)
 const wss = new WebSocket.Server({ server, path: '/ws' })
 
 wss.on('connection', (ws, req) => {
-  const messages = rx.Observable.create(observer => {
-    ws.on('message', msg => observer.next(msg))
-  }).map(JSON.parse).log('<-')
+  const input = Observable.fromEvent(ws, 'message')
+    .pluck('data')
+    .map(JSON.parse)
 
-  const output = new rx.Subject()
-  output.map(JSON.stringify).log('->').subscribe(x => ws.send(x))
+  ws.on('error', e => console.log('who cares', e))
 
-  const numbers = rx.Observable.interval(1000).take(4)
+  const output = new Subject().map(JSON.stringify).log('->')
 
-  const alpha = rx.Observable.from(['a','b','c','d'])
-    .zip(rx.Observable.interval(500)).map(x => x[0])
+  .subscribe(x => ws.send(x))
 
-  interlinked(messages, output, { numbers, alpha })
+  const subject = Subject.create(output, messages)
+
+  const api = {
+    numbers: Observable.interval(1000).take(4),
+    alpha: Observable.interval(500).zip(Observable.of('a', 'b', 'c', 'd')).map(x => x[1])
+  }
+
+  interlinked(subject, api).subscribe()
 })
 
 server.listen(3004, () =>
