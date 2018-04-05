@@ -1,6 +1,8 @@
 import { Observable } from 'rxjs'
 import { hasProperty } from './util'
 
+import resource from './resource'
+
 export default function createServer(api, input$) {
   return new Observable(observer => {
     input$ = input$.share()
@@ -15,6 +17,9 @@ export default function createServer(api, input$) {
         } else if (typeof v.subscribe === 'function') {
           observableListener(input$, thisKeyPath, v).subscribe(observer)
           o[k] = {_type: 'observable'}
+        } else if (v instanceof resource) {
+          resourceListener(input$, thisKeyPath, v).subscribe(observer)
+          o[k] = {_type: 'resource'}
         } else if (v !== null && typeof v === 'object') {
           o[k] = reduce(v, thisKeyPath + '.')
         }
@@ -49,21 +54,42 @@ function observableListener(input$, keyPath, obs) {
   return input$
     .filter(hasProperty('subscribe'))
     .filter(({subscribe: key}) => key === keyPath)
-    .mergeMap(({id: txId}) => {
-      const unsubscribe$ = input$
-        .filter(hasProperty('unsubscribe'))
-        .filter(({unsubscribe: id}) => id === txId)
+    .mergeMap(({id: txId}) => wrapObservable(input$, obs, txId))
+    .takeUntil(input$.last())
+}
 
-      return new Observable(observer =>
-        obs
-          .map(x => [txId, x])
-          .do({
-            next: x => observer.next(x),
-            complete: () => observer.next({complete: txId})
-          })
-          .takeUntil(unsubscribe$)
-          .subscribe()
-      )
+function resourceListener(input$, keyPath, resource) {
+  return input$
+    .filter(hasProperty('subscribe'))
+    .filter(({subscribe: key}) => key.includes(keyPath + '.'))
+    .mergeMap(({id: txId, subscribe: key}) => {
+      const resourceId = key.replace(keyPath + '.', '')
+      let obs
+
+      if (resourceId === 'index') {
+        obs = resource.index()
+      } else {
+        obs = resource.get(resourceId)
+      }
+
+      return wrapObservable(input$, obs, txId)
     })
     .takeUntil(input$.last())
+}
+
+function wrapObservable(input$, obs, txId) {
+  const unsubscribe$ = input$
+    .filter(hasProperty('unsubscribe'))
+    .filter(({unsubscribe: id}) => id === txId)
+
+  return new Observable(observer =>
+    obs
+      .map(x => [txId, x])
+      .do({
+        next: x => observer.next(x),
+        complete: () => observer.next({complete: txId})
+      })
+      .takeUntil(unsubscribe$)
+      .subscribe()
+  )
 }

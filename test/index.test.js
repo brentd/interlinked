@@ -150,14 +150,48 @@ describe('interlinked()', () => {
       const obsB = m.cold('x-y-z|')
       const sub =         '^----!'
 
-      const proxyA = interlinked(b, {obsA}).take(1)
-      const proxyB = interlinked(a, {obsB}).take(1)
+      const proxyA = interlinked(b, {obsA}).switchMap(remote => remote.obsB.materialize()).dematerialize()
+      const proxyB = interlinked(a, {obsB}).switchMap(remote => remote.obsA.materialize()).dematerialize()
 
-      m.equal(proxyA.mergeMap(remote => remote.obsB), obsB)
-      m.equal(proxyB.mergeMap(remote => remote.obsA), obsA)
+      m.equal(proxyA, obsB)
+      m.equal(proxyB, obsA)
 
       m.has(obsA, sub)
       m.has(obsB, sub)
     }))
+  })
+
+  const resource = require('../src/resource').default
+
+  describe('resources', () => {
+    it('exposes a get() function that returns an observable', async () => {
+      const api = {
+        replicants: resource({
+          get: id => Observable.of('K' + id)
+        })
+      }
+
+      const [proxyA, proxyB] = await link(a, api, b)
+
+      proxyB
+
+      const result = await proxyB.replicants.get(123).take(1).toPromise()
+      assert.equal(result, 'K123')
+    })
+
+    it('exposes an index', async () => {
+      const api = {
+        replicants: resource({
+          index: () => Observable.of([ {id: 1} ])
+        })
+      }
+
+      const [proxyA, proxyB] = await link(a, api, b)
+
+      proxyB
+
+      const result = await proxyB.replicants.index().take(1).toPromise()
+      assert.deepEqual(result, [{id: 1}])
+    })
   })
 })

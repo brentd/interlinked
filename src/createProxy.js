@@ -1,5 +1,6 @@
 import { Observable, Subject } from 'rxjs'
 import { hasProperty, hasId, nextTxId } from './util'
+import { delayedRefCount } from './operators'
 
 export default function createProxy(definition, input$) {
   const output = new Subject()
@@ -11,6 +12,8 @@ export default function createProxy(definition, input$) {
         o[k] = createProxyFunction(input$, thisKeyPath, x => output.next(x))
       } else if (v._type === 'observable') {
         o[k] = createProxyObservable(input$, thisKeyPath, x => output.next(x))
+      } else if (v._type === 'resource') {
+        o[k] = createProxyResource(input$, thisKeyPath, x => output.next(x))
       } else if (v !== null && typeof v === 'object') {
         o[k] = reduce(v, thisKeyPath + '.')
       }
@@ -58,6 +61,24 @@ function createProxyObservable(input$, keyPath, send) {
 
     return sub
   })
+}
+
+function createProxyResource(input$, keyPath, send) {
+  const imap = {}
+
+  return {
+    get(id) {
+      if (!imap[id]) {
+        const key = `${keyPath}.${id}`
+        imap[id] = createProxyObservable(input$, key, send).publishReplay(1).pipe(delayedRefCount())
+      }
+      return imap[id]
+    },
+
+    index() {
+      return createProxyObservable(input$, `${keyPath}.index`, send)
+    }
+  }
 }
 
 function throwOnError(input$, name, txId) {
