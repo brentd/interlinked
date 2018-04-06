@@ -1,4 +1,8 @@
-import { Observable } from 'rxjs'
+import 'rxjs/add/operator/publish'
+import 'rxjs/add/operator/scan'
+import 'rxjs/add/operator/switchMap'
+import 'rxjs/add/operator/take'
+
 import { marbles } from 'rxjs-marbles'
 import { delayedRefCount } from '../src/operators'
 

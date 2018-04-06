@@ -1,9 +1,9 @@
 import { Observable } from 'rxjs/Observable'
 import { Subject } from 'rxjs/Subject'
-import async from 'rxjs/Scheduler/async'
+import async from 'rxjs/scheduler/async'
 
-import { timer } from 'rxjs/Observable/timer'
-import { never } from 'rxjs/Observable/never'
+import { timer } from 'rxjs/observable/timer'
+import { never } from 'rxjs/observable/never'
 
 // Like `refCount()`, but delays unsubscribing from the underlying connectable
 // observable until the specified delay.

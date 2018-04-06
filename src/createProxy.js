@@ -1,4 +1,6 @@
-import { Observable, Subject } from 'rxjs'
+import { Observable } from 'rxjs'
+import { Subject } from 'rxjs/Subject'
+
 import { hasProperty, hasId, nextTxId } from './util'
 import { delayedRefCount } from './operators'
 

@@ -1,5 +1,6 @@
-import { Observable } from 'rxjs'
-import { Subject } from 'rxjs'
+import { Observable } from 'rxjs/Observable'
+import { Subject } from 'rxjs/Subject'
+
 import assert from 'assert'
 import { marbles } from 'rxjs-marbles'
 
