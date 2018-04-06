@@ -1,6 +1,6 @@
 {
   "name": "interlinked",
-  "version": "0.2.0",
+  "version": "0.2.0.beta2",
   "description": "Rx-enabled peer-to-peer RPC",
   "main": "lib/index.js",
   "license": "MIT",
