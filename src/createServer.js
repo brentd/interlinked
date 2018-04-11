@@ -55,7 +55,7 @@ function observableListener(input$, keyPath, obs) {
     .filter(hasProperty('subscribe'))
     .filter(({subscribe: key}) => key === keyPath)
     .mergeMap(({id: txId}) => wrapObservable(input$, obs, txId))
-    .takeUntil(input$.last())
+    .takeUntil(input$.count())
 }
 
 function resourceListener(input$, keyPath, resource) {
@@ -74,7 +74,7 @@ function resourceListener(input$, keyPath, resource) {
 
       return wrapObservable(input$, obs, txId)
     })
-    .takeUntil(input$.last())
+    .takeUntil(input$.count())
 }
 
 function wrapObservable(input$, obs, txId) {
