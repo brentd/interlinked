@@ -66,15 +66,17 @@ function createProxyObservable(input$, keyPath, send) {
 }
 
 function createProxyResource(input$, keyPath, send) {
-  const imap = {}
+  const cache = {}
 
   return {
     get(id) {
-      if (!imap[id]) {
+      if (!cache[id]) {
         const key = `${keyPath}.${id}`
-        imap[id] = createProxyObservable(input$, key, send).publishReplay(1).pipe(delayedRefCount())
+        cache[id] = createProxyObservable(input$, key, send)
+          .publishReplay(1)
+          .pipe(delayedRefCount(0))
       }
-      return imap[id]
+      return cache[id]
     },
 
     index() {

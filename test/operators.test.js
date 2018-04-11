@@ -3,6 +3,8 @@ import 'rxjs/add/operator/scan'
 import 'rxjs/add/operator/switchMap'
 import 'rxjs/add/operator/take'
 
+import { timer } from 'rxjs/observable/timer'
+
 import { marbles } from 'rxjs-marbles'
 import { delayedRefCount } from '../src/operators'
 
@@ -31,6 +33,21 @@ describe('delayedRefCount()', () => {
     delayed.take(3).subscribe()
 
     m.has(source, subs)
+  }))
+
+  it('delays unsubscribing when subscribed to more than once', marbles(m => {
+    m.bind()
+
+    const source = m.hot('-a-b-c')
+    const sub1   =       '^-!'
+    const sub2   =       '   ^!'
+
+    const delayed = source.publish().pipe(delayedRefCount(10))
+
+    delayed.take(1).subscribe()
+    timer(30).subscribe(() => delayed.take(1).subscribe())
+
+    m.has(source, [sub1, sub2])
   }))
 
   it('unsubscribes immediately if the source completes', marbles(m => {
