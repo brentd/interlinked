@@ -13,12 +13,11 @@ import "rxjs/add/operator/switchMap"
 // observable until the specified delay.
 export function delayedRefCount(delay = 0, scheduler = async) {
   return source => {
-    const count$ = new Subject()
     let subscription
+    const count$ = new Subject()
 
     count$
       .scan((total, n) => total + n, 0)
-      .filter(total => total === 0)
       .switchMap(total => total === 0 ? timer(delay, scheduler) : never())
       .subscribe(() => subscription && subscription.unsubscribe())
 
