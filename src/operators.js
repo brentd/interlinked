@@ -5,9 +5,9 @@ import async from 'rxjs/scheduler/async'
 import { timer } from 'rxjs/observable/timer'
 import { never } from 'rxjs/observable/never'
 
-import "rxjs/add/operator/scan"
-import "rxjs/add/operator/filter"
-import "rxjs/add/operator/switchMap"
+import 'rxjs/add/operator/scan'
+import 'rxjs/add/operator/filter'
+import 'rxjs/add/operator/switchMap'
 
 // Like `refCount()`, but delays unsubscribing from the underlying connectable
 // observable until the specified delay.
