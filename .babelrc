@@ -1,3 +1,13 @@
 {
-  "presets": [["env", {"targets": {"node": "current"}}]]
+  "env": {
+    "development": {
+      "presets": [["env", {"targets": {"node": "current"}}]]
+    },
+    "commonjs": {
+      "presets": [["env", {"targets": {"browsers": ["ie >= 11"]}}]]
+    },
+    "es": {
+      "presets": [["env", {"targets": {"browsers": ["ie >= 11"]}, "modules": false}]]
+    }
+  }
 }
