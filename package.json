@@ -1,6 +1,6 @@
 {
   "name": "interlinked",
-  "version": "0.2.0-beta.6",
+  "version": "0.2.0-beta.7",
   "description": "Rx-enabled peer-to-peer RPC",
   "main": "lib/index.js",
   "module": "es/index.js",
