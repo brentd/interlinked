@@ -1,61 +1,36 @@
 import { ReplaySubject, of } from 'rxjs'
-import { take } from 'rxjs/operators'
+import { take, tap } from 'rxjs/operators'
 import { marbles } from 'rxjs-marbles/jest'
 
 import interlinked from './index'
 import { resetTxId } from './util'
 
 describe('interlinked()', () => {
-  describe('e2e', () => {
-    function link(apiA, apiB) {
-      const a = new ReplaySubject()
-      const b = new ReplaySubject()
+  let output
 
-      const linkA = interlinked(apiA)
-      const linkB = interlinked(apiB)
-
-      a.pipe(linkA).subscribe(b)
-      b.pipe(linkB).subscribe(a)
-
-      return [linkA, linkB]
-    }
-
-    beforeEach(() => {
-      resetTxId()
-    })
-
-    it('publishes an api to both peers', async () => {
-      const apiA = { fnA: () => {} }
-      const apiB = { fnB: () => {} }
-      const [linkA, linkB] = link(apiA, apiB)
-
-      const proxyA = await linkA.remotes.pipe(take(1)).toPromise()
-      const proxyB = await linkB.remotes.pipe(take(1)).toPromise()
-
-      expect(proxyA.fnB).toBeInstanceOf(Function)
-      expect(proxyB.fnA).toBeInstanceOf(Function)
-    }, 100)
+  beforeEach(() => {
+    output = new ReplaySubject()
   })
 
   describe('publishing', () => {
     it('emits an empty publish message when no api is provided', marbles(m => {
       const input = m.hot('-')
 
-      m.equal(input.pipe(interlinked()), 'x', {
+      input.pipe(interlinked()(output)).subscribe()
+
+      m.equal(output, 'x', {
         x: { publish: [] }
       })
     }))
 
-    it('emits an empty proxy api when receiving an empty publish', marbles(m => {
+    it('emits an empty proxy api upon receiving an empty publish', marbles(m => {
       const link = interlinked()
 
       const input = m.hot('--x', {
         x: { publish: [] }
       })
 
-      input.pipe(link).subscribe()
-
-      m.equal(link.remotes, '--x', {
+      m.equal(input.pipe(link(output)), '--x', {
         x: {}
       })
     }))
@@ -65,9 +40,7 @@ describe('interlinked()', () => {
 
       const input = m.hot('-')
 
-      input.pipe(link).subscribe()
-
-      m.equal(link.remotes, '-')
+      m.equal(input.pipe(link(output)), '-')
     }))
   })
 
@@ -75,6 +48,17 @@ describe('interlinked()', () => {
     describe('serve', () => {
       it('applies the specified api as [keyPath, value] pairs to the middleware, using its return value to serialize the properties', () => {
         expect.assertions(1)
+
+        const output = {
+          next: (x) => {
+            expect(x).toEqual({
+              publish: [
+                { serialized: ['within.cells', 'interlinked'] },
+                { serialized: ['dreadfully', 'distinct'] }
+              ]
+            })
+          }
+        }
 
         const api = {
           within: {
@@ -91,19 +75,12 @@ describe('interlinked()', () => {
           }
         }
 
-        of().pipe(interlinked(api, [middleware])).subscribe(x => {
-          expect(x).toEqual({
-            publish: [
-              { serialized: ['within.cells', 'interlinked'] },
-              { serialized: ['dreadfully', 'distinct'] }
-            ]
-          })
-        })
+        const link = interlinked(api, [middleware])
+
+        link(output)(of()).subscribe()
       })
 
       it('gives middlewares direct access to input excluding publishes', marbles(m => {
-        expect.assertions(1)
-
         const api = {
           within: 'cells'
         }
@@ -115,13 +92,15 @@ describe('interlinked()', () => {
 
         const middleware = function(input, output) {
           return {
-            serve: (key, value) => {
+            serve: () => {
               m.equal(input, '---x', { x: 'interlinked' })
             }
           }
         }
 
-        source.pipe(interlinked(api, [middleware]))
+        const link = interlinked(api, [middleware])
+
+        source.pipe(link(output)).subscribe()
       }))
     })
 
@@ -142,9 +121,7 @@ describe('interlinked()', () => {
 
         const link = interlinked({}, [middleware])
 
-        source.pipe(link)
-
-        link.remotes.subscribe(remote => {
+        source.pipe(link(output)).subscribe(remote => {
           expect(remote).toEqual({ within: { cells: 'interlinked' } })
         })
       })
@@ -164,7 +141,9 @@ describe('interlinked()', () => {
           }
         }
 
-        source.pipe(interlinked({}, [middleware]))
+        const link = interlinked({}, [middleware])
+
+        source.pipe(link(output)).subscribe()
       }))
 
       it('gives middlewares direct access to output after publishing', marbles(m => {
@@ -178,7 +157,10 @@ describe('interlinked()', () => {
           }
         }
 
-        m.equal(source.pipe(interlinked({}, [middleware])), '(px)', {
+        const link = interlinked({}, [middleware])
+        source.pipe(link(output)).subscribe()
+
+        m.equal(output, '(px)', {
           p: { publish: [] },
           x: 'interlinked'
         })

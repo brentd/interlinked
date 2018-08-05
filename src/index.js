@@ -1,4 +1,3 @@
-import { ReplaySubject } from 'rxjs'
 import { partition, map, share } from 'rxjs/operators'
 import isPlainObject from 'lodash/isPlainObject'
 import set from 'lodash/set'
@@ -17,39 +16,31 @@ export const defaultMiddlewares = [
 export const resource = config => new Resource(config)
 
 export default function interlinked(api = {}, middleware = defaultMiddlewares) {
-  const link = source => {
-    const output$ = new QueueingSubject()
-
+  return output => source => {
     // Separate input into a stream of publishes and a stream of everything else.
     const [publishes$, messages$] = source.pipe(
       share(),
       partition(x => x.publish !== undefined)
     )
 
-    const stack = middleware.map(mware => new mware(messages$, output$))
+    // Instatiate the middlewares. Middlewares are given access to all input
+    // except publishes, and direct write access to output.
+    const stack = middleware.map(mdl => new mdl(messages$, output))
 
-    // Each time we receive a publish, it means a new server was created on the
-    // remote. Map each publish to a new proxy interface for the client to use.
-    // The proxy interfaces are sent to `link.remotes` as a side effect.
-    publishes$.pipe(
-      map(({ publish: serialized }) =>
-        createProxy(serialized, stack)
-      )
-    ).subscribe(x => link.remotes.next(x))
+    // Publishes are transformed into a local proxy interface.
+    const remotes$ = publishes$.pipe(
+      map(({ publish: serializedProps }) => {
+        console.log('hello')
+        return createProxy(serializedProps, stack.map(mdl => mdl.proxy))
+      })
+    )
 
     // Create the server from middlewares and publish the serialized properties.
-    const publish = createServer(api, stack)
-    output$.next(publish)
+    const publishMessage = createServer(api, stack.map(mdl => mdl.serve))
+    output.next(publishMessage)
 
-    return output$.asObservable()
+    return remotes$
   }
-
-  link.remotes = new ReplaySubject(1)
-
-  link.remote = null
-  link.remotes.subscribe(api => link.remote = api)
-
-  return link
 }
 
 // Transforms the specified api object into an output stream by asking all
@@ -57,7 +48,6 @@ export default function interlinked(api = {}, middleware = defaultMiddlewares) {
 function createServer(api, middlewares) {
   const properties = flattenObject(api).reduce((acc, [keyPath, value]) => {
     middlewares
-      .map(mware => mware.serve)
       .filter(fn => typeof fn === 'function')
       .forEach(serve => {
         const result = serve(keyPath, value)
@@ -71,15 +61,14 @@ function createServer(api, middlewares) {
 
 // "Recreates" the api by asking all middlewares to create a proxy object
 // for each serialized api property. The proxy objects are responsible for
-// sending messages to the server on `output$` and listening for a response on `input$`.
-function createProxy(serialized, middlewares) {
-  return serialized.reduce((api, obj) => {
+// sending messages to the server on ` and listening for a response on `input$`.
+function createProxy(serializedProps, middlewares) {
+  return serializedProps.reduce((api, prop) => {
     middlewares
-      .map(mware => mware.proxy)
       .filter(fn => typeof fn === 'function')
       .forEach(proxy => {
-        const result = proxy(obj)
-        result !== undefined && set(api, obj.key, result)
+        const result = proxy(prop)
+        result !== undefined && set(api, prop.key, result)
       })
     return api
   }, {})
