@@ -1,49 +1,50 @@
-import express from 'express'
-import webpackMiddleware from 'webpack-dev-middleware'
-import WebSocket from 'ws'
-import http from 'http'
-import webpack from 'webpack'
-import path from 'path'
+const http = require('http')
+const path = require('path')
+const express = require('express')
+const WebSocket = require('ws')
+const Bundler = require('parcel-bundler')
 
-import { Observable, Subject } from 'rxjs'
-import interlinked from '../lib'
+const { Subject, fromEvent, interval, of } = require('rxjs')
+const { map, zip, catchError } = require('rxjs/operators')
+const interlinked = require('../lib').default
 
 var app = express()
 
-Observable.prototype.log = function(msg) {
-  return this.do(x => console.log(msg, x))
-}
-
-app.use(webpackMiddleware(
-  webpack(require('./webpack.config')), {noInfo: true}
-))
-
-app.get('/', function(req, res) {
-  res.sendFile(path.join(__dirname, 'index.html'));
-})
+const bundler = new Bundler(path.join(__dirname, 'index.html'))
+app.use(bundler.middleware())
 
 const server = http.createServer(app)
 const wss = new WebSocket.Server({ server, path: '/ws' })
 
+// This is the API we'll expose to connected websockets.
+const api = {
+  hello: () => 'hello world',
+
+  numbers: interval(1000),
+
+  alpha: interval(500).pipe(
+    zip(of('a', 'b', 'c', 'd')),
+    map(x => x[1])
+  )
+}
+
 wss.on('connection', (ws, req) => {
-  const input = Observable.fromEvent(ws, 'message')
-    .pluck('data')
-    .map(JSON.parse)
+  ws.on('error', console.error)
 
-  ws.on('error', e => console.log('who cares', e))
+  const input = fromEvent(ws, 'message').pipe(
+    map(x => JSON.parse(x.data))
+  )
 
-  const output = new Subject().map(JSON.stringify).log('->')
+  const output = new Subject().pipe(
+    map(JSON.stringify)
+  )
 
-  .subscribe(x => ws.send(x))
+  output.subscribe(x => ws.readyState === WebSocket.OPEN && ws.send(x))
 
-  const subject = Subject.create(output, messages)
+  const link = interlinked(api)
 
-  const api = {
-    numbers: Observable.interval(1000).take(4),
-    alpha: Observable.interval(500).zip(Observable.of('a', 'b', 'c', 'd')).map(x => x[1])
-  }
-
-  interlinked(subject, api).subscribe()
+  // We don't expect the other side to publish an API, so we just subscribe.
+  input.pipe(link(output)).subscribe()
 })
 
 server.listen(3004, () =>

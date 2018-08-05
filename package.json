@@ -17,7 +17,9 @@
     "api"
   ],
   "scripts": {
-    "test": "mocha",
+    "test": "jest --env=node",
+    "test:watch": "jest --watch --env=node",
+    "example": "cd example && node server.js",
     "build": "yarn run build:es && yarn run build:commonjs",
     "build:es": "BABEL_ENV=es babel src --out-dir es",
     "build:commonjs": "BABEL_ENV=commonjs babel src --out-dir lib",
