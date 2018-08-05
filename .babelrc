@@ -1,13 +1,18 @@
 {
+  "presets": [
+    ["env", {"targets": {"node": "current"}}]
+  ],
+  "plugins": ["babel-plugin-transform-class-properties"],
   "env": {
-    "development": {
-      "presets": [["env", {"targets": {"node": "current"}}]]
-    },
     "commonjs": {
-      "presets": [["env", {"targets": {"browsers": ["ie >= 11"]}}]]
+      "presets": [["env", {"targets": {"browsers": ["ie >= 11"]}}]],
+      "plugins": ["babel-plugin-transform-class-properties"],
+      "ignore": ["**.test.js"]
     },
     "es": {
-      "presets": [["env", {"targets": {"browsers": ["ie >= 11"]}, "modules": false}]]
+      "presets": [["env", {"targets": {"browsers": ["ie >= 11"]}, "modules": false}]],
+      "plugins": ["babel-plugin-transform-class-properties"],
+      "ignore": ["**.test.js"]
     }
   }
 }
