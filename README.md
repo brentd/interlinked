@@ -98,7 +98,7 @@ interlinked({
 
 remote.counter.subscribe({
   next: x => console.log(x),
-  complete: console.log('Complete')
+  complete: () => console.log('Complete')
 })
 
 // 1
