@@ -29,10 +29,9 @@ export default function interlinked(api = {}, middleware = defaultMiddlewares) {
 
     // Publishes are transformed into a local proxy interface.
     const remotes$ = publishes$.pipe(
-      map(({ publish: serializedProps }) => {
-        console.log('hello')
-        return createProxy(serializedProps, stack.map(mdl => mdl.proxy))
-      })
+      map(({ publish: serializedProps }) =>
+        createProxy(serializedProps, stack.map(mdl => mdl.proxy))
+      )
     )
 
     // Create the server from middlewares and publish the serialized properties.
