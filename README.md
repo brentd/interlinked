@@ -63,7 +63,7 @@ interlinked(api: Object, middlewares: Object[]) => operator(output: { next: Func
 |---|---|---|---|
 | `api` | `Object` | optional | A plain object containing observables and functions that you want to expose to the connected peer. This object may be nested to help organize the API. |
 | `middlewares` | `Array<Object>` | optional | An array of middleware objects. Overrides the default stack; append your middlewares to the default stack if you want to extend it. |
-| `output` | `Object` | required | `{ next: (msg: Array\|Object) => void }` <br><br> Any object that responds to `next`. `next` takes one argument and must send the message through your transport to the connected peer. `msg` may be a JavaScript `Object` or `Array` - see [Protocol](#Protocol). You are responsible for serializing for your transport. |
+| `output` | `Object` | required | `{ next: (msg: Array\|Object) => void }` <br><br> Any object that responds to `next`. `next` takes one argument and must send the message through your transport to the connected peer. `msg` may be a JavaScript `Object` or `Array` of undefined depth - see [Protocol](#protocol). You are responsible for serializing Interlinked's transfer protocol for your transport. |
 
 ## Supported Types
 
@@ -191,6 +191,8 @@ function(input, output) {
 ```
 
 ## Protocol
+
+Below is a description of Interlinked's transfer protocol that you are responsible for serializing (JSON works fine) and sending over your transpor, e.g. a websocket.
 
 ### Publishing the API
 
