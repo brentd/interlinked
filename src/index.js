@@ -1,192 +1,82 @@
-import { Observable } from 'rxjs/Observable'
+import { partition, map, share } from 'rxjs/operators'
+import isPlainObject from 'lodash/isPlainObject'
+import set from 'lodash/set'
 
-import 'rxjs/add/operator/count'
-import 'rxjs/add/operator/do'
-import 'rxjs/add/operator/filter'
-import 'rxjs/add/operator/map'
-import 'rxjs/add/operator/merge'
-import 'rxjs/add/operator/mergeMap'
-import 'rxjs/add/operator/partition'
-import 'rxjs/add/operator/share'
-import 'rxjs/add/operator/take'
-import 'rxjs/add/operator/takeUntil'
-import 'rxjs/add/operator/finally'
-import 'rxjs/add/operator/publishReplay'
+import { QueueingSubject } from './rx/QueueingSubject'
+import functions from './middleware/functions'
+import observables from './middleware/observables'
+import resources, { Resource } from './middleware/resources'
 
-let peerId = 0
-const nextPeerId = () => peerId++
+export const defaultMiddlewares = [
+  functions,
+  observables,
+  resources
+]
 
-// Returns a function that notifies the remote to execute the method identified
-// by `key`. The function returns a Promise that will resolve when the
-// remote responds with a result.
-const createProxyFunction = (channel, key) =>
-  (...params) => {
-    const id = nextPeerId()
-    const promise =  channel.result$.merge(channel.error$)
-      .takeUntil(channel.disconnect$)
-      .takeUntil(channel.register$)
-      .filter(x => x.id === id)
-      .take(1)
-      .do(x => { if (x.error) throw new Error(x.error.message) })
-      .map(x => x.observable ? createProxyObservable(channel, x.result) : x.result)
-      .toPromise()
+export const resource = config => new Resource(config)
 
-    channel.send({id, method: key, params})
+export default function interlinked(api = {}, middleware = defaultMiddlewares) {
+  return output => source => {
+    // Separate input into a stream of publishes and a stream of everything else.
+    const [publishes$, messages$] = source.pipe(
+      share(),
+      partition(x => x.publish !== undefined)
+    )
 
-    return promise
+    // Instatiate the middlewares. Middlewares are given access to all input
+    // except publishes, and direct write access to output.
+    const stack = middleware.map(mdl => new mdl(messages$, output))
+
+    // Publishes are transformed into a local proxy interface.
+    const remotes$ = publishes$.pipe(
+      map(({ publish: serializedProps }) =>
+        createProxy(serializedProps, stack.map(mdl => mdl.proxy))
+      )
+    )
+
+    // Create the server from middlewares and publish the serialized properties.
+    const publishMessage = createServer(api, stack.map(mdl => mdl.serve))
+    output.next(publishMessage)
+
+    return remotes$
   }
-
-// Returns an observable that, when subscribed to, notifies the remote
-// to subscribe to the observable identified by `key`. The subscription
-// forwards all events received from the remote to the observer.
-const createProxyObservable = (channel, key) =>
-  Observable.create(observer => {
-    const id = nextPeerId()
-    const stop = channel.complete$.merge(channel.error$)
-      .filter(x => x.id === id)
-      .do(x => { if (x.error) throw new Error(x.error.message) })
-
-    const sub = channel.demux(id)
-      .takeUntil(channel.disconnect$)
-      .takeUntil(channel.register$)
-      .takeUntil(stop)
-      .finally(() => channel.send({unsubscribe: id}))
-      .subscribe(observer)
-
-    channel.send({id, subscribe: key})
-
-    return sub
-  })
-
-// Sets up proxy functions and observables as defined by the serialized remote
-// interface.
-const registerRemote = (channel, definition, keys = []) => {
-  return Object.entries(definition).reduce((local, [k, v]) => {
-    const keyPath = keys.concat(k).join('.')
-    switch (v.type) {
-      case 'function':
-        local[k] = createProxyFunction(channel, keyPath)
-        break
-      case 'observable':
-        local[k] = createProxyObservable(channel, v.key)
-        break
-      case 'subject':
-        local[k] = createProxyObservable(channel, v.key)
-        local[k].next = x => channel.mux(v.key, x)
-        break
-      default:
-        local[k] = registerRemote(channel, v, keys.concat(k))
-    }
-    return local
-  }, {})
 }
 
-// Serializes an interface into a definition that can be sent over the wire,
-// while also setting up listeners on the remote.
-const serializeRemote = (channel, api, keys = []) => {
-  return Object.entries(api).reduce((definition, [k, v]) => {
-    const keyPath = keys.concat(k).join('.')
-    if (typeof v.subscribe === 'function') {
-      const obsId = nextPeerId()
-      listenSubscribe(channel, v, obsId)
-
-      if (typeof v.next === 'function') {
-        listenNext(channel, v, obsId)
-        definition[k] = {type: 'subject', key: obsId}
-      } else {
-        definition[k] = {type: 'observable', key: obsId}
-      }
-    } else if (typeof v === 'function') {
-      listenMethod(channel, v, keyPath)
-      definition[k] = {type: 'function'}
-    } else if (typeof v === 'object' && v !== null) {
-      definition[k] = serializeRemote(channel, v, keys.concat(k))
-    }
-    return definition
-  }, {})
-}
-
-// Listen for the remote to call the local method `fn` identified by `name`.
-const listenMethod = (channel, fn, name) =>
-  channel.method$
-    .filter(x => x.method === name)
-    .subscribe(({method, params, id}) => {
-      let result
-      try {
-        result = fn(...params)
-      } catch(e) {
-        return channel.send({id, error: {message: e.message}})
-      }
-
-      Promise.resolve(result).then(x => {
-        if (x.subscribe) {
-          const obsId = nextPeerId()
-          listenSubscribe(channel, x, obsId)
-          channel.send({id, result: obsId, observable: true})
-        } else {
-          channel.send({id, result: x})
-        }
-      }).catch(e => {
-        channel.send({id, error: {message: e.message}})
+// Transforms the specified api object into an output stream by asking all
+// middlewares to listen to `input$` and respond however they want on `output$`.
+function createServer(api, middlewares) {
+  const properties = flattenObject(api).reduce((acc, [keyPath, value]) => {
+    middlewares
+      .filter(fn => typeof fn === 'function')
+      .forEach(serve => {
+        const result = serve(keyPath, value)
+        result !== undefined && acc.push(result)
       })
-    })
+    return acc
+  }, [])
 
-// Listen for the remote to subscribe to the local observer `obs` identified by `obsId`.
-const listenSubscribe = (channel, obs, obsId) =>
-  channel.subscribe$
-    .filter(x => x.subscribe === obsId)
-    .mergeMap(({id}) =>
-       obs
-        .takeUntil(channel.disconnect$)
-        .takeUntil(channel.unsubscribe$.filter(x => x.id === id))
-        .do(
-          x   => channel.mux(id, x),
-          err => channel.send({id, error: {message: err.message}}),
-          ()  => channel.send({complete: id})
-        )
-    ).subscribe({error: e => console.log('[interlinked]', e)})
-
-// Listen for the remote to `next` values to the subject identified by `obsId`.
-// This will also forward complete and error events to the subject.
-const listenNext = (channel, subject, obsId) =>
-  channel.demux(obsId).subscribe(subject)
-
-// Represents the multiplexed, duplex pipe for a peer. Takes a deserialized
-// stream as `input`, and a `sender` function to call when writing.
-function Channel(input, sender) {
-  input = input.share()
-  const [muxed$, main$] = input.partition(x => x.constructor === Array)
-
-  this.send  = sender
-  this.mux   = (id, x) => sender([id, x])
-  this.demux = id => muxed$.filter(x => x[0] === id).map(x => x[1])
-
-  const defined   = prop => x => x[prop] !== undefined
-  const normalize = key => x => ({id: x[key]})
-
-  this.register$    = main$.filter(defined('register'))
-  this.method$      = main$.filter(defined('method'))
-  this.result$      = main$.filter(defined('result'))
-  this.subscribe$   = main$.filter(defined('subscribe'))
-  this.unsubscribe$ = main$.filter(defined('unsubscribe')).map(normalize('unsubscribe'))
-  this.complete$    = main$.filter(defined('complete')).map(normalize('complete'))
-  this.error$       = main$.filter(defined('error'))
-
-  // This will emit when the input completes, e.g. from a socket disconnect.
-  this.disconnect$  = input.count()
+  return { publish: properties }
 }
 
-export default function(input, output, api = {}) {
-  const sender = output.next ? x => output.next(x) : output
-  const channel = new Channel(input, sender)
-
-  const remotes$ = channel.register$
-    .map(({register: definition}) => registerRemote(channel, definition))
-    .publishReplay(1)
-
-  remotes$.connect()
-
-  channel.send({register: serializeRemote(channel, api)})
-
-  return remotes$
+// "Recreates" the api by asking all middlewares to create a proxy object
+// for each serialized api property. The proxy objects are responsible for
+// sending messages to the server on ` and listening for a response on `input$`.
+function createProxy(serializedProps, middlewares) {
+  return serializedProps.reduce((api, prop) => {
+    middlewares
+      .filter(fn => typeof fn === 'function')
+      .forEach(proxy => {
+        const result = proxy(prop)
+        result !== undefined && set(api, prop.key, result)
+      })
+    return api
+  }, {})
 }
+
+// Flattens an object to an array of [keyPath, value] pairs.
+const flattenObject = (obj, keyPath = '') =>
+  Object.entries(obj).reduce((acc, [key, value]) =>
+    isPlainObject(value)
+      ? [...acc, ...flattenObject(value, `${keyPath}${key}.`)]
+      : [...acc, [`${keyPath}${key}`, value]]
+    , [])

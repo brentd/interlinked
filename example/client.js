@@ -1,21 +1,18 @@
-import rx from 'rxjs'
+import { Observable, Subject } from 'rxjs'
+import { map, take } from 'rxjs/operators'
+import { WebSocketSubject } from 'rxjs/websocket'
 import interlinked from '../lib'
 
-const ws = new WebSocket('ws://localhost:3004/ws')
+// RxJS's WebSocketSubject acts as both input and output for a websocket
+// connection, and by default JSON-serializes data.
+const socket = new WebSocketSubject('ws://localhost:3004/ws')
 
-ws.addEventListener('open', () => {
-  const input = rx.Observable.fromEvent(ws, 'message')
-    .map(e => JSON.parse(e.data))
+const link = interlinked()
 
-  const output = new rx.Subject()
-  output.map(JSON.stringify).subscribe(x => ws.send(x))
+socket.pipe(link(socket)).subscribe(remote => {
+  remote.hello().then(x => console.log(x))
 
-  interlinked(input, output, {}).subscribe(remote => {
-    remote.numbers.subscribe(console.log)
-    remote.alpha.subscribe(console.log)
-  })
-})
+  remote.numbers.pipe(take(20)).subscribe(x => console.log(x))
 
-ws.addEventListener('close', () => {
-  setTimeout(() => location.reload(), 1000)
+  remote.alpha.subscribe(x => console.log(x))
 })

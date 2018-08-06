@@ -1,44 +1,50 @@
-import express from 'express'
-import webpackMiddleware from 'webpack-dev-middleware'
-import WebSocket from 'ws'
-import http from 'http'
-import webpack from 'webpack'
-import path from 'path'
+const http = require('http')
+const path = require('path')
+const express = require('express')
+const WebSocket = require('ws')
+const Bundler = require('parcel-bundler')
 
-import rx from 'rxjs'
-import interlinked from '../lib'
+const { Subject, fromEvent, interval, of } = require('rxjs')
+const { map, zip, catchError } = require('rxjs/operators')
+const interlinked = require('../lib').default
 
 var app = express()
 
-rx.Observable.prototype.log = function(msg) {
-  return this.do(x => console.log(msg, x))
-}
-
-app.use(webpackMiddleware(
-  webpack(require('./webpack.config')), {noInfo: true}
-))
-
-app.get('/', function(req, res) {
-  res.sendFile(path.join(__dirname, 'index.html'));
-})
+const bundler = new Bundler(path.join(__dirname, 'index.html'))
+app.use(bundler.middleware())
 
 const server = http.createServer(app)
 const wss = new WebSocket.Server({ server, path: '/ws' })
 
+// This is the API we'll expose to connected websockets.
+const api = {
+  hello: () => 'hello world',
+
+  numbers: interval(1000),
+
+  alpha: interval(500).pipe(
+    zip(of('a', 'b', 'c', 'd')),
+    map(x => x[1])
+  )
+}
+
 wss.on('connection', (ws, req) => {
-  const messages = rx.Observable.create(observer => {
-    ws.on('message', msg => observer.next(msg))
-  }).map(JSON.parse).log('<-')
+  ws.on('error', console.error)
 
-  const output = new rx.Subject()
-  output.map(JSON.stringify).log('->').subscribe(x => ws.send(x))
+  const input = fromEvent(ws, 'message').pipe(
+    map(x => JSON.parse(x.data))
+  )
 
-  const numbers = rx.Observable.interval(1000).take(4)
+  const output = new Subject().pipe(
+    map(JSON.stringify)
+  )
 
-  const alpha = rx.Observable.from(['a','b','c','d'])
-    .zip(rx.Observable.interval(500)).map(x => x[0])
+  output.subscribe(x => ws.readyState === WebSocket.OPEN && ws.send(x))
 
-  interlinked(messages, output, { numbers, alpha })
+  const link = interlinked(api)
+
+  // We don't expect the other side to publish an API, so we just subscribe.
+  input.pipe(link(output)).subscribe()
 })
 
 server.listen(3004, () =>

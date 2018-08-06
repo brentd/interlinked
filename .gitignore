@@ -1,2 +1,6 @@
 /node_modules
 /lib
+/es
+.tags*
+.cache
+/example/dist
