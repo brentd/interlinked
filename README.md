@@ -54,14 +54,14 @@ This is an incomplete example for brevity. For a working client/server implement
 ### API
 
 ```javascript
-interlinked(api: Object, middlewares: Object[]) ⇒ operator(output: { next: Function }) ⇒ Observable<Object>
+interlinked(api: Object, middlewares: Object[]) => operator(output: { next: Function }) => Observable<Object>
 ```
 
 |Param|Type||Description|
 |---|---|---|---|
 | `api` | `Object` | optional | A plain object containing observables and functions that you want to expose to the connected peer. This object may be nested to help organize the API. |
 | `middlewares` | `Array<Object>` | optional | An array of middleware objects. Overrides the default stack; append your middlewares to the default stack if you want to extend it. |
-| `output` | `{ next: (msg: Array\|Object) ⇒ void }` | required | Any object that responds to `next`. `next` takes one argument and must send the message through your transport to the connected peer. `msg` may be a JavaScript `Object` or `Array` - see [Protocol](#Protocol). You are responsible for serializing for your transport. |
+| `output` | `Function` | required | `{ next: (msg: Array\|Object) => void }` <br><br> Any object that responds to `next`. `next` takes one argument and must send the message through your transport to the connected peer. `msg` may be a JavaScript `Object` or `Array` - see [Protocol](#Protocol). You are responsible for serializing for your transport. |
 
 Returns an [RxJS pipeable operator](https://github.com/ReactiveX/rxjs/blob/master/doc/pipeable-operators.md). The operator transforms the input stream into a stream of proxy Objects that mirror the API exposed by the connected peer.
 
